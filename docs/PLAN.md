@@ -284,7 +284,7 @@ PATCH  /api/me                   (user)  body: { displayName }
 - No auth crypto in the Worker: Neon Auth issues and checks codes and sessions. The Worker only forwards `/api/auth/*` and asks Neon Auth for the session on writes (network wait, not CPU).
 - Spreadsheet parsing runs in the browser. The server only validates and inserts the normalized JSON.
 - Stats are computed in Postgres. Waiting on the database doesn't count as CPU time.
-- Milestone 2 measures real CPU per route with `wrangler tail`. If something goes over, the fallback is Cloudflare's $5/month paid plan with no code changes.
+- Milestone 2 measured real CPU per route with `wrangler tail`: all routes 0–6 ms after the fix (see the spike results under "Auth design"). If something goes over, the fallback is Cloudflare's $5/month paid plan with no code changes.
 
 ### Pipeline
 1. Push or PR → **GitHub Actions**: `pnpm install`, typecheck, lint, Vitest (with a Postgres service), build.
@@ -346,7 +346,15 @@ Without a domain, Resend and similar services refuse to email anyone except the 
 1. ✅ Email OTP sign-in works with password sign-in **disabled** (`email_and_password` off) and creates the user on first use. No password sign-up needed.
 2. ✅ The `@neon/auth` client works against the same-origin `/api/auth` proxy (it needs an absolute URL, so the app passes `${location.origin}/api/auth`). Neon Auth sets `__Secure-neon-auth.session_token` with `HttpOnly; Secure; SameSite=None; Partitioned; Path=/` and no `Domain`, so it lands on the app's origin unchanged. Works on `http://localhost` in Chromium.
 3. Session lifetime **7 days** (`Max-Age=604800`, refreshed by `get-session`). OTP expiry **10 minutes**. A wrong code returns `400 {"code":"INVALID_OTP"}`.
-4. ⏳ CPU per request: measure with `wrangler tail` after the first production deploy. The proxy buffers the (tiny) request body and does one `fetch`; the session check is one `fetch` plus one upsert.
+4. ✅ CPU per request, measured in production with `wrangler tail` (2026-11-27):
+
+   | Route | First deploy (n) | After fix (n) |
+   |---|---|---|
+   | `/api/auth/*` (proxied) | 0–3 ms (13) | 0–3 ms (17) |
+   | `/api/me` signed out (401) | 0–4 ms (8) | 0–3 ms (15) |
+   | `/api/me` signed in | 3 / 6 / **14** ms (6) | 0 / 1 / 6 ms (37), p90 5 ms |
+
+   Signed-in requests first went over the 10 ms limit. The fix: the `app_users` upsert is plain SQL instead of a Drizzle-built query, and `requireUser` keeps each user's row in memory per isolate for 60 s, so repeat requests skip the write. The session is still checked with Neon Auth on every request. Remaining cost is the session check (one `fetch` plus parsing its reply). New routes that run `requireUser` should be measured the same way.
 - Neon's shared dev sender sometimes delays a code by a minute or more; "Resend code" helps. Production uses custom SMTP.
 - `@neon/auth` 0.8.2 pins `@better-fetch/fetch@1.3.2`; a pnpm override to 1.3.3 keeps one copy of `@better-auth/core` (two copies break the client's `emailOtp` types).
 
