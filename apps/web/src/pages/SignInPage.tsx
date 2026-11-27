@@ -126,6 +126,9 @@ function CodeStep({ email, onBack, onSignedIn }: { email: string; onBack: () => 
       <p className="text-sm text-slate-600 dark:text-slate-400">
         We sent a code to <strong>{email}</strong>. It expires in 10 minutes.
       </p>
+      <p className="text-sm text-slate-600 dark:text-slate-400">
+        Not there? Check your spam folder. Codes come from mecatolledger@gmail.com.
+      </p>
       <Field
         label="6-digit code"
         inputMode="numeric"
