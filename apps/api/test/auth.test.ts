@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { meResponseSchema } from '@mecatol/shared';
 import { app } from '../src/app.js';
+import { clearUserCache } from '../src/auth/user-cache.js';
 import type { AppUser } from '../src/db/schema.js';
 import { updateDisplayName, upsertAppUser } from '../src/db/users.js';
 
@@ -33,6 +34,7 @@ const sessionFor = (email: string, setCookie?: string) => () =>
   );
 
 afterEach(() => {
+  clearUserCache();
   vi.unstubAllGlobals();
   vi.resetAllMocks();
 });
@@ -128,5 +130,40 @@ describe('/api/me', () => {
     );
     expect(res.status).toBe(400);
     expect(updateDisplayName).not.toHaveBeenCalled();
+  });
+
+  it('skips the upsert for a recently seen user but still checks the session', async () => {
+    const fetchMock = mockFetch(sessionFor('me@example.com'));
+    vi.mocked(upsertAppUser).mockResolvedValue(row());
+    await app.request('/api/me', { headers: { cookie: COOKIE } }, env);
+    const res = await app.request('/api/me', { headers: { cookie: COOKIE } }, env);
+    expect(res.status).toBe(200);
+    expect(upsertAppUser).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('upserts again when the cached row no longer matches the session', async () => {
+    mockFetch(sessionFor('me@example.com'));
+    vi.mocked(upsertAppUser).mockResolvedValue(row());
+    await app.request('/api/me', { headers: { cookie: COOKIE } }, env);
+    mockFetch(sessionFor('new@example.com'));
+    vi.mocked(upsertAppUser).mockResolvedValue(row({ email: 'new@example.com' }));
+    const res = await app.request('/api/me', { headers: { cookie: COOKIE } }, env);
+    expect(upsertAppUser).toHaveBeenCalledTimes(2);
+    expect(await res.json()).toMatchObject({ email: 'new@example.com' });
+  });
+
+  it('serves the new display name from the cache after a PATCH', async () => {
+    mockFetch(sessionFor('me@example.com'));
+    vi.mocked(upsertAppUser).mockResolvedValue(row());
+    vi.mocked(updateDisplayName).mockResolvedValue(row({ displayName: 'Cody' }));
+    await app.request(
+      '/api/me',
+      { method: 'PATCH', headers: { cookie: COOKIE, 'content-type': 'application/json' }, body: JSON.stringify({ displayName: 'Cody' }) },
+      env,
+    );
+    const res = await app.request('/api/me', { headers: { cookie: COOKIE } }, env);
+    expect(upsertAppUser).toHaveBeenCalledOnce();
+    expect(await res.json()).toMatchObject({ displayName: 'Cody' });
   });
 });

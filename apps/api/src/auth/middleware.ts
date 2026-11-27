@@ -3,6 +3,7 @@ import { createMiddleware } from 'hono/factory';
 import { upsertAppUser } from '../db/users.js';
 import type { AppEnv } from '../env.js';
 import { getNeonSession } from './neon-auth.js';
+import { cacheUser, getCachedUser } from './user-cache.js';
 
 /**
  * Requires a Neon Auth session. Upserts the app_users row and sets `c.var.user`.
@@ -16,12 +17,14 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
   if (!session) return c.json({ error: 'Not signed in' }, 401);
   for (const sc of session.setCookies) c.header('set-cookie', sc, { append: true });
 
+  const { id } = session.user;
   const email = session.user.email.toLowerCase();
-  const user = await upsertAppUser(c.env.DATABASE_URL, {
-    id: session.user.id,
-    email,
-    isAdmin: session.user.emailVerified && parseAdminEmails(c.env.ADMIN_EMAILS).has(email),
-  });
+  const isAdmin = session.user.emailVerified && parseAdminEmails(c.env.ADMIN_EMAILS).has(email);
+  let user = getCachedUser(id, email, isAdmin);
+  if (!user) {
+    user = await upsertAppUser(c.env.DATABASE_URL, { id, email, isAdmin });
+    cacheUser(user);
+  }
   c.set('user', user);
   await next();
 });
