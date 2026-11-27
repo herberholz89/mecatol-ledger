@@ -40,5 +40,5 @@ Seed-data changes (factions, aliases) go in a new custom migration: `pnpm --filt
 
 ## Deployment
 
-Pushing to `main` runs CI, then migrates the Neon `main` branch, deploys the Worker and smoke-tests `/api/health`.
+Pushing to `main` runs CI, then migrates the Neon `production` branch, deploys the Worker and smoke-tests `/api/health`.
 Rollback: `pnpm --filter @mecatol/api exec wrangler rollback`.

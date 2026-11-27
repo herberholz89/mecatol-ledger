@@ -270,7 +270,7 @@ PATCH  /api/me                   (user)  body: { displayName }
 |---|---|---|---|
 | Local | `pnpm dev`: Vite dev server proxies `/api` to `wrangler dev` (local Workers runtime) | Neon `dev` branch (free plan includes 10 branches; the serverless driver talks to Neon, not plain local Postgres) | Daily development |
 | CI | GitHub Actions | Postgres service container | Typecheck, lint, tests, build |
-| Production | Cloudflare Worker `mecatol-ledger` | Neon project, `main` branch | The live site |
+| Production | Cloudflare Worker `mecatol-ledger` | Neon project, `production` branch (the default branch) | The live site |
 | Preview *(optional, later)* | Worker preview version per PR | Neon branch per PR | Test changes and migrations against a copy of prod data |
 
 ### Services (all free plans)

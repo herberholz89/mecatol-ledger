@@ -25,7 +25,7 @@ A stats tracker for Twilight Imperium games. Players log games (players, faction
 - Migrations must be backward compatible (add first, remove later) so rolling back app code never needs a DB rollback.
 
 ## Hard constraints (Cloudflare Workers free plan)
-- **10 ms CPU per request.** No password hashing or other heavy CPU work on the server. Parse spreadsheets in the browser; the server only validates and inserts JSON. Waiting on the database doesn't count as CPU time.
+- **10 ms CPU per request.** No password hashing, auth crypto or other heavy CPU work on the server (Neon Auth issues and checks codes and sessions; the Worker only proxies and asks for the session). Parse spreadsheets in the browser; the server only validates and inserts JSON. Waiting on the database doesn't count as CPU time.
 - 100,000 API requests/day. Static assets are free and unlimited.
 - Fastify and other Node-only servers don't run here; use Hono and Web-standard APIs (`nodejs_compat` flag is on).
 - Use the Neon serverless driver; use its WebSocket `Pool` per request when a transaction is needed (game writes, imports).
@@ -42,5 +42,5 @@ A stats tracker for Twilight Imperium games. Players log games (players, faction
 
 ## Local development
 - `pnpm dev`: Vite dev server proxies `/api` to `wrangler dev`.
-- Database: a Neon `dev` branch (the serverless driver needs Neon, not plain local Postgres). CI tests run against a Postgres service container.
+- Database: a Neon `dev` branch (the serverless driver needs Neon, not plain local Postgres). Production is the Neon `production` branch (the project's default). CI tests run against a Postgres service container.
 - Secrets go in `apps/api/.dev.vars` locally (gitignored) and `wrangler secret put` in production. Never commit secrets.
