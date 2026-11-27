@@ -1,0 +1,30 @@
+{
+  "name": "@mecatol/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "mkdir -p ../web/dist && wrangler dev",
+    "build": "wrangler deploy --dry-run --outdir dist",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "deploy": "wrangler deploy",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@mecatol/shared": "workspace:*",
+    "@neondatabase/serverless": "^1.2.1",
+    "drizzle-orm": "^0.45.4",
+    "hono": "^4.13.23"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261125.1",
+    "@types/node": "^22",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
+    "pg": "^8.23.1",
+    "vitest": "^5.1.2",
+    "wrangler": "^4.168.0"
+  }
+}

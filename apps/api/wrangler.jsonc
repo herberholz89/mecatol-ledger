@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mecatol-ledger",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "observability": { "enabled": true },
+  // The React build is served as static assets. Only /api/* runs the Worker;
+  // every other unknown path falls back to index.html for client-side routing.
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  }
+  // Secrets (not in this file): DATABASE_URL. Set with `wrangler secret put DATABASE_URL`,
+  // and locally in .dev.vars.
+}

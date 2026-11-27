@@ -1,0 +1,109 @@
+{
+  "id": "b3c4b8ee-c03a-4f04-b870-565bcda93d9f",
+  "prevId": "77102a60-aa49-4038-8b65-fbacb7fc4ee0",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.faction_aliases": {
+      "name": "faction_aliases",
+      "schema": "",
+      "columns": {
+        "alias": {
+          "name": "alias",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "faction_id": {
+          "name": "faction_id",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "faction_aliases_faction_id_factions_id_fk": {
+          "name": "faction_aliases_faction_id_factions_id_fk",
+          "tableFrom": "faction_aliases",
+          "columnsFrom": [
+            "faction_id"
+          ],
+          "tableTo": "factions",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.factions": {
+      "name": "factions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "serial",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expansion": {
+          "name": "expansion",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "archived": {
+          "name": "archived",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "factions_name_unique": {
+          "name": "factions_name_unique",
+          "columns": [
+            "name"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "factions_expansion_check": {
+          "name": "factions_expansion_check",
+          "value": "\"factions\".\"expansion\" in ('base', 'pok', 'codex', 'thunders_edge')"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

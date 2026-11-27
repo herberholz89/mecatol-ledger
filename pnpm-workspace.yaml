@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+minimumReleaseAgeExclude:
+  - hono@4.13.23
+  - vite@8.4.0
+
+allowBuilds:
+  esbuild: true
+  workerd: true
