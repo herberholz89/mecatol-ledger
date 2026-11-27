@@ -3,3 +3,7 @@
 DATABASE_URL=postgresql://USER:PASSWORD@HOST-pooler/neondb?sslmode=require
 # Optional: direct connection, used by drizzle-kit migrations.
 DATABASE_URL_UNPOOLED=postgresql://USER:PASSWORD@HOST/neondb?sslmode=require
+# Neon Auth URL of the dev branch: `neon neon-auth status --branch dev` (Base URL).
+NEON_AUTH_BASE_URL=https://ep-XXXX.neonauth.REGION.aws.neon.tech/neondb/auth
+# Comma-separated emails that get the admin role on sign-in.
+ADMIN_EMAILS=you@example.com

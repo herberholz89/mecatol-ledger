@@ -39,6 +39,19 @@ describe.skipIf(!url)('migrations', () => {
     );
   });
 
+  it('creates app_users with a role check', async () => {
+    const id = '57196779-a30c-4b00-816e-fd683d01c6d4';
+    const { rows } = await pool.query<{ role: string; display_name: string | null }>(
+      "insert into app_users (id, email) values ($1, 'me@example.com') returning role, display_name",
+      [id],
+    );
+    expect(rows[0]).toEqual({ role: 'user', display_name: null });
+    await expect(pool.query("update app_users set role = 'owner' where id = $1", [id])).rejects.toThrow(
+      /app_users_role_check/,
+    );
+    await pool.query('delete from app_users');
+  });
+
   it('is safe to re-run', async () => {
     await migrate(drizzle({ client: pool }), { migrationsFolder: './drizzle' });
     const { rows } = await pool.query<{ n: string }>('select count(*) as n from factions');

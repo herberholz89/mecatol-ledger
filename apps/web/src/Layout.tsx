@@ -1,4 +1,27 @@
 import { Link, Outlet } from 'react-router';
+import { useMe } from './useMe.js';
+
+function UserMenu() {
+  const me = useMe();
+  if (me.isPending) return null;
+  if (!me.data) {
+    return (
+      <Link to="/signin" className="text-sm font-medium text-indigo-600 hover:underline dark:text-indigo-400">
+        Sign in
+      </Link>
+    );
+  }
+  return (
+    <Link to="/account" className="text-sm hover:underline">
+      {me.data.displayName ?? me.data.email}
+      {me.data.role === 'admin' && (
+        <span className="ml-2 rounded bg-indigo-100 px-1.5 py-0.5 text-xs text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300">
+          admin
+        </span>
+      )}
+    </Link>
+  );
+}
 
 export function Layout() {
   return (
@@ -8,6 +31,7 @@ export function Layout() {
           <Link to="/" className="font-semibold tracking-tight">
             Mecatol Ledger
           </Link>
+          <UserMenu />
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-8">

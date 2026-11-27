@@ -8,3 +8,8 @@ minimumReleaseAgeExclude:
 allowBuilds:
   esbuild: true
   workerd: true
+
+overrides:
+  # @neon/auth pins 1.3.2 while better-auth wants 1.3.3; two copies split @better-auth/core
+  # and break the client's plugin types (emailOtp missing). Remove when @neon/auth catches up.
+  '@better-fetch/fetch': 1.3.3

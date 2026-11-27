@@ -5,7 +5,7 @@ import { countFactions } from '../src/db/health.js';
 
 vi.mock('../src/db/health.js', () => ({ countFactions: vi.fn() }));
 
-const env = { DATABASE_URL: 'postgres://unused', ASSETS: {} as Fetcher };
+const env = { DATABASE_URL: 'postgres://unused', NEON_AUTH_BASE_URL: 'https://auth.example.test', ASSETS: {} as Fetcher };
 
 describe('GET /api/health', () => {
   afterEach(() => vi.resetAllMocks());

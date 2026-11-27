@@ -6,6 +6,11 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "observability": { "enabled": true },
+  // Non-secret config. NEON_AUTH_BASE_URL is the production branch's Neon Auth URL;
+  // .dev.vars overrides it locally with the dev branch's.
+  "vars": {
+    "NEON_AUTH_BASE_URL": "https://ep-rapid-shape-aryqkiqj.neonauth.c-4.us-west-2.aws.neon.tech/neondb/auth"
+  },
   // The React build is served as static assets. Only /api/* runs the Worker;
   // every other unknown path falls back to index.html for client-side routing.
   "assets": {
@@ -14,6 +19,6 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*"]
   }
-  // Secrets (not in this file): DATABASE_URL. Set with `wrangler secret put DATABASE_URL`,
+  // Secrets (not in this file): DATABASE_URL, ADMIN_EMAILS. Set with `wrangler secret put <NAME>`,
   // and locally in .dev.vars.
 }

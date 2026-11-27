@@ -342,6 +342,14 @@ Without a domain, Resend and similar services refuse to email anyone except the 
 3. Session lifetime and OTP expiry, which the docs don't state. Record what they are.
 4. CPU time of proxied and session-checked requests, measured with `wrangler tail`.
 
+**Spike results (2026-11-27, Neon `dev` branch):**
+1. ✅ Email OTP sign-in works with password sign-in **disabled** (`email_and_password` off) and creates the user on first use. No password sign-up needed.
+2. ✅ The `@neon/auth` client works against the same-origin `/api/auth` proxy (it needs an absolute URL, so the app passes `${location.origin}/api/auth`). Neon Auth sets `__Secure-neon-auth.session_token` with `HttpOnly; Secure; SameSite=None; Partitioned; Path=/` and no `Domain`, so it lands on the app's origin unchanged. Works on `http://localhost` in Chromium.
+3. Session lifetime **7 days** (`Max-Age=604800`, refreshed by `get-session`). OTP expiry **10 minutes**. A wrong code returns `400 {"code":"INVALID_OTP"}`.
+4. ⏳ CPU per request: measure with `wrangler tail` after the first production deploy. The proxy buffers the (tiny) request body and does one `fetch`; the session check is one `fetch` plus one upsert.
+- Neon's shared dev sender sometimes delays a code by a minute or more; "Resend code" helps. Production uses custom SMTP.
+- `@neon/auth` 0.8.2 pins `@better-fetch/fetch@1.3.2`; a pnpm override to 1.3.3 keeps one copy of `@better-auth/core` (two copies break the client's `emailOtp` types).
+
 **Fallback:** if the cookie proxy fails, the browser sends Neon Auth's 15-minute JWT as `Authorization: Bearer`, and the Worker verifies it with `jose` against `NEON_AUTH_JWKS_URL` (EdDSA, `iss`/`aud` = the auth URL's origin). That check is cheap and native in Workers.
 
 **Production checklist:** custom SMTP, trusted domain, application name, Google provider removed, "Allow Localhost" off on the production branch.
