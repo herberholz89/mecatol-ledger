@@ -195,7 +195,7 @@ Seeded aliases from typos found in the sheet: `necro virus` → Nekro Virus, `th
    - "No date" is shown as an info note but doesn't change a game's status. *(Changed 2026-11-28: as a warning it flagged 65 of the sheet's 78 games and buried the real problems.)*
 
    Blocked games can be fixed inline or skipped.
-6. **Commit**: the normalized JSON is posted to `POST /api/imports` (at most 500 games). The server re-validates everything (same rules as a logged game; archived players and factions are allowed, since imports are history) and writes the `import_batch`, new players, games and seats in **one statement** with data-modifying CTEs. Game ids are drawn from the sequence up front so seats can reference them.
+6. **Commit**: the normalized JSON is sent in chunks of 25 games (at most 500 games per import), so each request stays under the 10 ms CPU limit (see the CPU budget). The first chunk goes to `POST /api/imports`, which creates the `import_batch`; the rest go to `POST /api/imports/:id/games`, in order. The server re-validates every chunk (same rules as a logged game; archived players and factions are allowed, since imports are history) and writes its new players, games and seats in **one statement** with data-modifying CTEs. Game ids are drawn from the sequence up front so seats can reference them. A name an earlier chunk created resolves to that player. If a chunk fails, the browser deletes the batch, so an import is all or nothing (players created by earlier chunks stay, as with undo).
 7. **Undo**: `DELETE /api/imports/:id` removes the whole batch.
 
 Known clean-up in the sheet: the multiplayer tab has seats with no player name and a game whose winner cell is blank, so those games will show as blocked until fixed in the review step.
@@ -243,7 +243,8 @@ GET    /api/factions/aliases     (public; used by the importer)
 GET    /api/stats/factions?playerCount=&from=&to=&mine=
 GET    /api/stats/players?playerCount=&from=&to=&mine=
 
-POST   /api/imports              (user)  body: normalized batch
+POST   /api/imports              (user)  body: source name + first chunk (≤ 25 games); creates the batch
+POST   /api/imports/:id/games    (importer)  body: next chunk (≤ 25 games)
 GET    /api/imports              (user)  your own imports, with game counts
 DELETE /api/imports/:id          (owner/admin)
 
@@ -305,7 +306,8 @@ PATCH  /api/me                   (user)  body: { displayName }
   | `GET /api/players` | 1–2 ms (10) | 1–3 ms (5) |
   | `GET /api/games`, `/api/factions`, `/api/health` | 1–10 ms (12) | 1–4 ms (3) |
 
-  One sample per game write, probably on a fresh isolate, so typical requests should be lower. `POST /api/games` at 7 ms is the tightest route; measure milestone 4's bulk import the same way. **To do after the milestone 4 deploy:** `wrangler tail` a real import of the sheet (78 games, ~160 seats in one request: Zod validation plus building 13 parameter arrays) and record it here. If it goes over 10 ms, split the commit into chunks of games in the browser, each its own batch or a shared batch id.
+  One sample per game write, probably on a fresh isolate, so typical requests should be lower. `POST /api/games` at 7 ms is the tightest route.
+- **Imports go in 25-game chunks** (milestone 4, measured 2026-11-28 with `wrangler tail`, all `ok`): importing the real sheet (76 games) in one request took **15 ms** the first time and **8 ms** the second (after an undo). Undo (`DELETE /api/imports/:id`) took 3 ms both times; other routes 1–9 ms (`GET /api/games` hit 9 ms once with 76 games listed, 2–3 ms otherwise). Zod validation of the 76 games takes under 2 ms locally, so the rest is per-request work that grows with the batch, and a 500-game import would be far over. The browser now sends `IMPORT_CHUNK_GAMES` (25) games per request: the first creates the batch, the rest go to `POST /api/imports/:id/games`. **To do after deploying the chunked import:** `wrangler tail` another import of the sheet (4 requests) and record the numbers here.
 
 ### Pipeline
 1. Push or PR → **GitHub Actions**: `pnpm install`, typecheck, lint, Vitest (with a Postgres service), build.
@@ -411,3 +413,4 @@ Keep "Twilight Imperium" out of the name and domain (Fantasy Flight Games' trade
 - 2026-11-27: Auth moves to **Neon Auth** (managed Better Auth), still email-code only. Neon sends the codes (Gmail as its custom SMTP in production). New `app_users` table; user columns become `uuid references app_users(id)`. See [Auth design](#auth-design-neon-auth).
 - 2026-11-28: Database writes use Neon's **HTTP driver only** (single statements or HTTP transactions). The WebSocket `Pool` took game writes over the 10 ms CPU limit.
 - 2026-11-28: Milestone 4 (import): SheetJS from its CDN tarball, behind a separate `@mecatol/shared/xlsx` entry. "No date" is info, not a warning. Imports may use archived players and factions. Players an import creates stay after an undo (deleting unused players is milestone 6). `POST /api/factions/aliases` added now for the importer; alias deletion stays in milestone 6.
+- 2026-11-28: Imports are sent in **25-game chunks** (`POST /api/imports`, then `POST /api/imports/:id/games`). The sheet in one request took 8–15 ms CPU against the 10 ms limit. A failed chunk makes the browser undo the batch. No schema change.

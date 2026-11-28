@@ -16,7 +16,7 @@ import {
 } from '@mecatol/shared';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import { ApiError, createImport } from '../../api.js';
+import { ApiError, importInChunks } from '../../api.js';
 import { buttonClass, FormError, inputClass } from '../../components/form.js';
 import { formatDate } from '../../format.js';
 import { queryKeys } from '../../queries.js';
@@ -59,10 +59,15 @@ export function ReviewStep(props: {
   const games = reviewed.flatMap((r) => (r.game ? [r.game] : []));
   const blocked = count('blocked');
 
+  const [saved, setSaved] = useState(0);
   const commit = useMutation({
-    mutationFn: () => createImport({ sourceName: sourceName.trim(), games }),
-    onSuccess: async (created) => {
-      props.onImported(created);
+    mutationFn: () => {
+      setSaved(0);
+      return importInChunks(sourceName.trim(), games, setSaved);
+    },
+    onSuccess: (created) => props.onImported(created),
+    // A failed import is undone, but players its first chunks added stay in the roster (as with undo).
+    onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: queryKeys.games }),
         queryClient.invalidateQueries({ queryKey: queryKeys.allPlayers }),
@@ -152,7 +157,7 @@ export function ReviewStep(props: {
             disabled={games.length === 0 || tooMany || !sourceName.trim() || commit.isPending}
             onClick={() => commit.mutate()}
           >
-            {commit.isPending ? 'Importing…' : `Import ${games.length} ${games.length === 1 ? 'game' : 'games'}`}
+            {commit.isPending ? `Importing… ${saved} of ${games.length}` : `Import ${games.length} ${games.length === 1 ? 'game' : 'games'}`}
           </button>
         </div>
       </div>

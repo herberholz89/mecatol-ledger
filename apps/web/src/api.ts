@@ -2,6 +2,7 @@ import {
   createdImportSchema,
   factionAliasSchema,
   factionSchema,
+  IMPORT_CHUNK_GAMES,
   importBatchSummarySchema,
   gameDetailSchema,
   gamesPageSchema,
@@ -13,7 +14,10 @@ import {
   type GameInput,
   type GamesPage,
   type HealthResponse,
+  type CreatedImport,
   type ImportBatchInput,
+  type ImportChunkInput,
+  type ImportGame,
   type MeResponse,
   type Player,
   type UpdateMe,
@@ -124,4 +128,43 @@ export const createFactionAlias = (body: CreateFactionAlias) => request('/factio
 
 export const fetchImports = () => request('/imports', importBatchSummarySchema.array());
 export const createImport = (body: ImportBatchInput) => request('/imports', createdImportSchema, json('POST', body));
+export const addImportGames = (id: number, body: ImportChunkInput) => request(`/imports/${id}/games`, createdImportSchema, json('POST', body));
 export const deleteImport = (id: number) => request(`/imports/${id}`, z.null(), { method: 'DELETE' });
+
+/**
+ * Imports games in chunks of IMPORT_CHUNK_GAMES so each request stays under the Worker's CPU limit.
+ * The first chunk creates the batch and the rest are added to it, in order. If a chunk fails, the
+ * batch is deleted again so the import stays all or nothing.
+ */
+export async function importInChunks(
+  sourceName: string,
+  games: ImportGame[],
+  onProgress: (saved: number) => void,
+): Promise<CreatedImport> {
+  const chunks: ImportGame[][] = [];
+  for (let i = 0; i < games.length; i += IMPORT_CHUNK_GAMES) chunks.push(games.slice(i, i + IMPORT_CHUNK_GAMES));
+  const [first, ...rest] = chunks;
+  if (!first) throw new Error('Nothing to import');
+
+  let result = await createImport({ sourceName, games: first });
+  let newPlayers = result.newPlayers;
+  onProgress(result.games);
+  try {
+    for (const chunk of rest) {
+      result = await addImportGames(result.id, { games: chunk });
+      newPlayers += result.newPlayers;
+      onProgress(result.games);
+    }
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    try {
+      await deleteImport(result.id);
+    } catch {
+      throw new Error(`The import stopped after ${result.games} of ${games.length} games (${reason}). Undo it from your account page and try again.`, {
+        cause: err,
+      });
+    }
+    throw new Error(`The import stopped partway and was undone: ${reason}`, { cause: err });
+  }
+  return { ...result, newPlayers };
+}

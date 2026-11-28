@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import { gameFieldsShape, gameRuleIssues, playerNameSchema, POINTS_MAX, seatsArraySchema } from './games.js';
 
+/** Most games one import can hold. The import page enforces it. */
 export const IMPORT_MAX_GAMES = 500;
+/**
+ * Most games per request. The import page sends a batch in chunks this size so each request stays
+ * under the Workers free plan's 10 ms CPU (76 games in one request took 8–15 ms).
+ */
+export const IMPORT_CHUNK_GAMES = 25;
 export const SOURCE_NAME_MAX = 200;
 
 const id = (message: string) => z.number({ error: message }).int(message).positive(message);
@@ -43,16 +49,26 @@ export const importGameSchema = z
 export type ImportGame = z.infer<typeof importGameSchema>;
 export type ImportGameDraft = z.input<typeof importGameSchema>;
 
-/** Body of `POST /api/imports`: games are written in this order, all or nothing. */
+const importGamesArraySchema = z
+  .array(importGameSchema)
+  .min(1, 'Nothing to import')
+  .max(IMPORT_CHUNK_GAMES, `At most ${IMPORT_CHUNK_GAMES} games per request`);
+
+/**
+ * Body of `POST /api/imports`: creates the batch with its first chunk of games. Each request is
+ * all or nothing, and games are written in the order sent.
+ */
 export const importBatchSchema = z.object({
   sourceName: z.string().trim().min(1, 'Name the import').max(SOURCE_NAME_MAX),
-  games: z
-    .array(importGameSchema)
-    .min(1, 'Nothing to import')
-    .max(IMPORT_MAX_GAMES, `At most ${IMPORT_MAX_GAMES} games per import`),
+  games: importGamesArraySchema,
 });
 export type ImportBatchInput = z.infer<typeof importBatchSchema>;
 export type ImportBatchDraft = z.input<typeof importBatchSchema>;
+
+/** Body of `POST /api/imports/:id/games`: the next chunk of games for a batch you created. */
+export const importChunkSchema = z.object({ games: importGamesArraySchema });
+export type ImportChunkInput = z.infer<typeof importChunkSchema>;
+export type ImportChunkDraft = z.input<typeof importChunkSchema>;
 
 export const importBatchSummarySchema = z.object({
   id: z.number().int(),
@@ -63,7 +79,7 @@ export const importBatchSummarySchema = z.object({
 });
 export type ImportBatchSummary = z.infer<typeof importBatchSummarySchema>;
 
-/** Response of `POST /api/imports`. */
+/** Response of `POST /api/imports` and `POST /api/imports/:id/games`: the batch so far, and the players this request added. */
 export const createdImportSchema = importBatchSummarySchema.extend({
   newPlayers: z.number().int(),
 });
