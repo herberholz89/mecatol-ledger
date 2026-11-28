@@ -31,8 +31,8 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <header className="border-b border-slate-200 dark:border-slate-800">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <nav className="flex items-center gap-6">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
+          <nav className="flex flex-wrap items-center gap-x-6 gap-y-2">
             <Link to="/" className="font-semibold tracking-tight">
               Mecatol Ledger
             </Link>
@@ -48,6 +48,11 @@ export function Layout() {
             {me.data && (
               <NavLink to="/import" className={navClass}>
                 Import
+              </NavLink>
+            )}
+            {me.data?.role === 'admin' && (
+              <NavLink to="/admin" className={navClass}>
+                Admin
               </NavLink>
             )}
           </nav>

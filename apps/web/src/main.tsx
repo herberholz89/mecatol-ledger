@@ -5,6 +5,7 @@ import { createBrowserRouter, RouterProvider } from 'react-router';
 import './index.css';
 import { Layout } from './Layout.js';
 import { AccountPage } from './pages/AccountPage.js';
+import { AdminPage } from './pages/AdminPage.js';
 import { GameDetailPage } from './pages/GameDetailPage.js';
 import { GameFormPage } from './pages/GameFormPage.js';
 import { GamesPage } from './pages/GamesPage.js';
@@ -37,6 +38,7 @@ const router = createBrowserRouter([
       { path: 'import', element: <ImportPage /> },
       { path: 'signin', element: <SignInPage /> },
       { path: 'account', element: <AccountPage /> },
+      { path: 'admin', element: <AdminPage /> },
       { path: '*', element: <NotFoundPage /> },
     ],
   },

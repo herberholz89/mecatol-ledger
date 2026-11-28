@@ -13,6 +13,7 @@ export const queryKeys = {
   /** Under `games`, so anything that invalidates games refreshes stats too. */
   stats: (kind: string, ...args: unknown[]) => ['games', 'stats', kind, ...args] as const,
   game: (id: number) => ['game', id] as const,
+  users: ['users'] as const,
 };
 
 /** Factions change only through admin action, so they're cached for the session. */

@@ -1,4 +1,5 @@
 import {
+  adminUserSchema,
   createdImportSchema,
   factionAliasSchema,
   factionSchema,
@@ -14,6 +15,7 @@ import {
   playerStatsDetailSchema,
   playerStatsSchema,
   statsOverviewSchema,
+  type CreateFaction,
   type CreateFactionAlias,
   type CreatePlayer,
   type GameInput,
@@ -27,7 +29,9 @@ import {
   type MeResponse,
   type RosterPlayer,
   type UpdatePlayer,
+  type UpdateFaction,
   type UpdateMe,
+  type UpdateUser,
 } from '@mecatol/shared';
 import { z } from 'zod';
 
@@ -215,3 +219,14 @@ export async function importInChunks(
   }
   return { ...result, newPlayers };
 }
+
+// ---------------------------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------------------------
+
+export const createFaction = (body: CreateFaction) => request('/factions', factionSchema, json('POST', body));
+export const updateFaction = (id: number, body: UpdateFaction) => request(`/factions/${id}`, factionSchema, json('PATCH', body));
+export const deleteFactionAlias = (alias: string) =>
+  request(`/factions/aliases/${encodeURIComponent(alias)}`, z.null(), { method: 'DELETE' });
+export const fetchUsers = () => request('/users', adminUserSchema.array());
+export const updateUser = (id: string, body: UpdateUser) => request(`/users/${id}`, adminUserSchema, json('PATCH', body));
