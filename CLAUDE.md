@@ -28,7 +28,7 @@ A stats tracker for Twilight Imperium games. Players log games (players, faction
 - **10 ms CPU per request.** No password hashing, auth crypto or other heavy CPU work on the server (Neon Auth issues and checks codes and sessions; the Worker only proxies and asks for the session). Parse spreadsheets in the browser; the server only validates and inserts JSON. Waiting on the database doesn't count as CPU time.
 - 100,000 API requests/day. Static assets are free and unlimited.
 - Fastify and other Node-only servers don't run here; use Hono and Web-standard APIs (`nodejs_compat` flag is on).
-- Use the Neon serverless driver; use its WebSocket `Pool` per request when a transaction is needed (game writes, imports).
+- Use the Neon serverless driver over **HTTP only** (`getDb` in `apps/api/src/db/connections.ts`). Don't use its WebSocket `Pool`/`Client`: each new connection does SCRAM password hashing in the Worker, which took `POST /api/games` to 16 ms CPU. Make atomic writes one statement (data-modifying CTEs), or a `db.batch([...])` (Neon's non-interactive HTTP transaction) where each statement repeats its own guard conditions.
 
 ## Domain rules (summary; details in docs/PLAN.md)
 - Games have 2–8 players and exactly one winner. The winner has the most points; a tie for most points is allowed only when `ended_early` is set. Points may exceed `vp_target`.

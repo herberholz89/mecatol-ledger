@@ -1,18 +1,15 @@
-import { gameDetailSchema, gamesPageSchema, playerSchema, type GameInputDraft, type Player } from '@mecatol/shared';
+import { gameDetailSchema, gameInputSchema, gamesPageSchema, playerSchema, type GameInputDraft, type Player } from '@mecatol/shared';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/app.js';
-import { closeTestPool, must, resetDatabase, TEST_DATABASE_URL, testPool } from './test-db.js';
+import { updateGame } from '../src/db/games.js';
+import { closeTestPool, must, resetDatabase, TEST_DATABASE_URL, testDb, testPool } from './test-db.js';
 
 // Real routes and SQL against the test database. Only Neon Auth is faked: the session cookie's
 // value is the user's id, and their email is `<name>@example.com`.
 
 vi.mock('../src/db/connections.js', async () => {
-  const { testPool: pool } = await import('./test-db.js');
-  const { runTransaction } = await import('../src/db/sql.js');
-  return {
-    readDb: () => pool(),
-    withTransaction: (_url: string, fn: Parameters<typeof runTransaction>[1]) => runTransaction(pool(), fn),
-  };
+  const { testDb } = await import('./test-db.js');
+  return { getDb: () => testDb() };
 });
 
 vi.mock('../src/db/users.js', async (importOriginal) => {
@@ -251,6 +248,23 @@ describe.skipIf(!TEST_DATABASE_URL)('players and games API', () => {
       expect(await q('mine=true', 'ben')).toHaveLength(1);
       expect((await call('GET', '/games?mine=true')).status).toBe(401);
       expect((await call('GET', '/games?playerCount=9')).status).toBe(400);
+    });
+
+    it('does nothing if the game is deleted between the checks and the write', async () => {
+      const created = gameDetailSchema.parse((await call('POST', '/games', { as: 'ana', body: game() })).body);
+      const db = testDb();
+      const racingDb = {
+        ...db,
+        batch: async (statements: Parameters<typeof db.batch>[0]) => {
+          await testPool().query('delete from games where id = $1', [created.id]);
+          await db.batch(statements);
+        },
+      };
+      const ana = { id: USERS.ana, email: 'ana@example.com', displayName: null, role: 'user' as const, createdAt: new Date() };
+      await updateGame(racingDb, created.id, ana, gameInputSchema.parse(game({ notes: 'too late' })));
+      const { rows } = await testPool().query('select 1 from game_players where game_id = $1', [created.id]);
+      expect(rows).toHaveLength(0);
+      expect((await call('GET', `/games/${created.id}`)).status).toBe(404);
     });
 
     it('lets the creator delete, taking the seats with it', async () => {

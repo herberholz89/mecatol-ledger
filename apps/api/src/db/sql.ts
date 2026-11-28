@@ -1,7 +1,6 @@
 /**
- * The bit of a Postgres client the data layer needs. Neon's HTTP driver (wrapped in connections.ts),
- * Neon's WebSocket Pool client and node-postgres all fit, so the same queries run in the Worker and
- * against the test database.
+ * The bit of a Postgres client the data layer needs. Neon's HTTP driver (connections.ts) and
+ * node-postgres (tests) both fit, so the same queries run in the Worker and against the test database.
  *
  * Queries are plain SQL rather than Drizzle-built: building queries costs CPU, and the free plan
  * allows 10 ms per request.
@@ -10,28 +9,18 @@ export interface Queryable {
   query(text: string, values?: unknown[]): Promise<{ rows: unknown[] }>;
 }
 
-export interface PoolClientLike extends Queryable {
-  release(): void;
+export interface Statement {
+  text: string;
+  values: unknown[];
 }
 
-export interface PoolLike {
-  connect(): Promise<PoolClientLike>;
-}
-
-/** Runs `fn` inside BEGIN/COMMIT on one pooled connection, rolling back if it throws. */
-export async function runTransaction<T>(pool: PoolLike, fn: (tx: Queryable) => Promise<T>): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('begin');
-    const result = await fn(client);
-    await client.query('commit');
-    return result;
-  } catch (err) {
-    await client.query('rollback').catch(() => undefined);
-    throw err;
-  } finally {
-    client.release();
-  }
+export interface Db extends Queryable {
+  /**
+   * Runs the statements in order in one transaction: all of them apply or none do. It's
+   * non-interactive (no reading results between statements), so write each statement to guard
+   * itself, e.g. by repeating an ownership condition, rather than relying on an earlier read.
+   */
+  batch(statements: Statement[]): Promise<void>;
 }
 
 /** Rows typed by the caller. The SQL is the source of truth for their shape. */
