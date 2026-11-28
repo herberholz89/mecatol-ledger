@@ -289,6 +289,19 @@ PATCH  /api/me                   (user)  body: { displayName }
 - Milestone 2 measured real CPU per route with `wrangler tail`: all routes 0–6 ms after the fix (see the spike results under "Auth design"). If something goes over, the fallback is Cloudflare's $5/month paid plan with no code changes.
 - **No WebSocket `Pool`** (milestone 3, measured 2026-11-28): game writes first used a per-request WebSocket `Pool` for transactions. `POST /api/games` took **16 ms** and `PUT` 10 ms, against 0–7 ms for every HTTP-driver route, because each new Pool connection does Postgres SCRAM-SHA-256 login (thousands of hash rounds) in the Worker. Writes now go over the HTTP driver, where Neon's proxy does the login: a single statement with data-modifying CTEs (create) or `sql.transaction([...])`, a non-interactive HTTP transaction (edit). Imports follow the same pattern.
 
+  Re-measured in production after the change (2026-11-28, `wrangler tail`, 14 requests, all `ok`, no exceptions):
+
+  | Route | Before: game writes on the Pool (n) | After: HTTP only (n) |
+  |---|---|---|
+  | `POST /api/games` | **16** ms (1) | **7** ms (1) |
+  | `PUT /api/games/:id` | **10** ms (1) | **5** ms (1) |
+  | `DELETE /api/games/:id` | 2 ms (1) | 2 ms (1) |
+  | `POST /api/players` | 2–6 ms (3) | 2–5 ms (3) |
+  | `GET /api/players` | 1–2 ms (10) | 1–3 ms (5) |
+  | `GET /api/games`, `/api/factions`, `/api/health` | 1–10 ms (12) | 1–4 ms (3) |
+
+  One sample per game write, probably on a fresh isolate, so typical requests should be lower. `POST /api/games` at 7 ms is the tightest route; measure milestone 4's bulk import the same way.
+
 ### Pipeline
 1. Push or PR → **GitHub Actions**: `pnpm install`, typecheck, lint, Vitest (with a Postgres service), build.
 2. Merge to `main` → the same workflow:
