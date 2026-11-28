@@ -1,4 +1,4 @@
-import { createdImportSchema, importBatchSummarySchema, type ImportBatchDraft, type ImportGameDraft } from '@mecatol/shared';
+import { createdImportSchema, IMPORT_CHUNK_GAMES, importBatchSummarySchema, type ImportBatchDraft, type ImportGameDraft } from '@mecatol/shared';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { app } from '../src/app.js';
 import { closeTestPool, must, resetDatabase, TEST_DATABASE_URL, testPool } from './test-db.js';
@@ -184,6 +184,48 @@ describe.skipIf(!TEST_DATABASE_URL)('imports API', () => {
 
     const [other] = importBatchSummarySchema.array().parse((await call('GET', '/imports', { as: 'ana' })).body);
     expect((await call('DELETE', `/imports/${must(other).id}`, { as: 'boss' })).status).toBe(204);
+  });
+
+  it('adds later chunks to your own batch, in order, reusing players earlier chunks created', async () => {
+    const zed = (points: number) =>
+      game({ seats: [
+        { player: { id: anaEric }, factionId: fid('Winnu'), points: 10 },
+        { player: { name: 'Zed' }, factionId: fid('Arborec'), points },
+      ] });
+    const first = createdImportSchema.parse((await call('POST', '/imports', { as: 'ana', body: batch([zed(1), zed(2)], 'chunked.xlsx') })).body);
+    expect(first).toMatchObject({ games: 2, newPlayers: 1 });
+
+    const res = await call('POST', `/imports/${first.id}/games`, { as: 'ana', body: { games: [zed(3), zed(4), zed(5)] } });
+    expect(res.status).toBe(200);
+    expect(createdImportSchema.parse(res.body)).toMatchObject({ id: first.id, sourceName: 'chunked.xlsx', games: 5, newPlayers: 0 });
+
+    const points = await testPool().query<{ points: number }>(
+      `select gp.points from games g join game_players gp on gp.game_id = g.id
+       where g.import_batch_id = $1 and gp.points < 10 order by g.id`,
+      [first.id],
+    );
+    expect(points.rows.map((r) => r.points)).toEqual([1, 2, 3, 4, 5]);
+    expect((await testPool().query("select 1 from players where name = 'Zed'")).rows).toHaveLength(1);
+
+    // Only the importer can add to a batch; others (admins too) get 404 and nothing is written.
+    const before = (await testPool().query('select count(*)::int as n from games')).rows[0];
+    for (const who of ['ben', 'boss'] as const) {
+      const other = game({ seats: [
+        { player: { name: 'Newcomer' }, factionId: fid('Winnu'), points: 10 },
+        { player: { name: 'Zed' }, factionId: fid('Arborec'), points: 1 },
+      ] });
+      expect((await call('POST', `/imports/${first.id}/games`, { as: who, body: { games: [other] } })).status).toBe(404);
+    }
+    expect((await call('POST', '/imports/999999/games', { as: 'ana', body: { games: [zed(6)] } })).status).toBe(404);
+    expect((await testPool().query('select count(*)::int as n from games')).rows[0]).toEqual(before);
+    expect((await testPool().query("select 1 from players where name = 'Newcomer'")).rows).toHaveLength(0);
+  });
+
+  it('caps each request at IMPORT_CHUNK_GAMES games', async () => {
+    const tooMany = Array.from({ length: IMPORT_CHUNK_GAMES + 1 }, () => game());
+    const res = await call('POST', '/imports', { as: 'ana', body: batch(tooMany) });
+    expect([res.status, issuePaths(res.body)]).toEqual([400, ['games']]);
+    expect((await call('POST', '/imports/1/games', { as: 'ana', body: { games: tooMany } })).status).toBe(400);
   });
 });
 

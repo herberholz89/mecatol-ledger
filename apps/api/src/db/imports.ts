@@ -1,4 +1,11 @@
-import { playerRefKey, type CreatedImport, type ImportBatchInput, type ImportBatchSummary } from '@mecatol/shared';
+import {
+  playerRefKey,
+  type CreatedImport,
+  type ImportBatchInput,
+  type ImportBatchSummary,
+  type ImportChunkInput,
+  type ImportGame,
+} from '@mecatol/shared';
 import type { AppUser } from './schema.js';
 import { forbidden, HttpError, notFound } from '../http-error.js';
 import { iso, isUniqueViolation, rows, type Queryable } from './sql.js';
@@ -37,14 +44,15 @@ const seatIssue = (game: number, seat: number, field: string, message: string) =
   });
 
 /**
- * Checks the batch against the database and resolves new player names that already exist in the
- * roster (ignoring case) to those players. Returns the names that still need creating.
+ * Checks the games against the database and resolves new player names that already exist in the
+ * roster (ignoring case) to those players. Returns the names that still need creating. A later
+ * chunk's names that an earlier chunk created resolve to those players here.
  */
-async function resolveRefs(db: Queryable, userId: string, batch: ImportBatchInput): Promise<{ newNames: string[]; idByName: Map<string, number> }> {
+async function resolveRefs(db: Queryable, userId: string, games: ImportGame[]): Promise<{ newNames: string[]; idByName: Map<string, number> }> {
   const playerIds = new Set<number>();
   const names = new Map<string, string>(); // lower → as written (first spelling wins)
   const factionIds = new Set<number>();
-  for (const game of batch.games) {
+  for (const game of games) {
     for (const seat of game.seats) {
       if ('id' in seat.player) playerIds.add(seat.player.id);
       else if (!names.has(seat.player.name.toLowerCase())) names.set(seat.player.name.toLowerCase(), seat.player.name);
@@ -66,7 +74,7 @@ async function resolveRefs(db: Queryable, userId: string, batch: ImportBatchInpu
   const knownFactions = new Set(ctx.factions);
   const idByName = new Map((ctx.named ?? []).map((p) => [p.lname, p.id]));
 
-  batch.games.forEach((game, g) => {
+  games.forEach((game, g) => {
     const seen = new Map<string, number>();
     game.seats.forEach((seat, s) => {
       if ('id' in seat.player && !roster.has(seat.player.id)) throw seatIssue(g, s, 'player', "That player isn't in your roster");
@@ -84,16 +92,19 @@ async function resolveRefs(db: Queryable, userId: string, batch: ImportBatchInpu
   return { newNames, idByName };
 }
 
+/** A new batch named `sourceName`, or the existing batch `batchId` (only its creator can add to it). */
+type Target = { sourceName: string } | { batchId: number };
+
 /**
- * Writes the batch, any new roster players and all games and seats in one statement, so the
- * import is all or nothing without a transaction (data-modifying CTEs over Neon's HTTP driver).
- * Game ids are drawn from the sequence up front so seats can refer to them; they're drawn in
- * order, so the batch's games keep the order they were sent in.
+ * Writes any new roster players and the games and seats in one statement, so each request is all
+ * or nothing without a transaction (data-modifying CTEs over Neon's HTTP driver). Game ids are
+ * drawn from the sequence up front so seats can refer to them; they're drawn in order, so games
+ * keep the order they were sent in. Returns null when adding to a batch that isn't the user's.
  *
  * Archived players and factions are allowed: imports are history.
  */
-export async function createImport(db: Queryable, user: AppUser, batch: ImportBatchInput): Promise<CreatedImport> {
-  const { newNames, idByName } = await resolveRefs(db, user.id, batch);
+async function insertGames(db: Queryable, user: AppUser, target: Target, games: ImportGame[]): Promise<CreatedImport | null> {
+  const { newNames, idByName } = await resolveRefs(db, user.id, games);
 
   const seatOrd: number[] = [];
   const seatPlayer: (number | null)[] = [];
@@ -101,7 +112,7 @@ export async function createImport(db: Queryable, user: AppUser, batch: ImportBa
   const seatFaction: number[] = [];
   const seatPoints: number[] = [];
   const seatWinner: boolean[] = [];
-  batch.games.forEach((game, g) => {
+  games.forEach((game, g) => {
     game.seats.forEach((seat, s) => {
       const existing = 'id' in seat.player ? seat.player.id : idByName.get(seat.player.name.toLowerCase());
       seatOrd.push(g + 1);
@@ -113,18 +124,25 @@ export async function createImport(db: Queryable, user: AppUser, batch: ImportBa
     });
   });
 
+  // $2 is the new batch's name or the existing batch's id. Everything below is guarded by `b`, so
+  // nothing is written when the batch isn't found.
+  const batchCte =
+    'sourceName' in target
+      ? 'insert into import_batches (created_by, source_name) values ($1, $2::text) returning id, source_name, created_at'
+      : 'select id, source_name, created_at from import_batches where id = $2::int and created_by = $1';
+
   try {
     const [row] = await rows<BatchRow & { new_players: number }>(
       db,
       `with b as (
-         insert into import_batches (created_by, source_name) values ($1, $2) returning id, source_name, created_at
+         ${batchCte}
        ), new_p as (
          insert into players (name, created_by)
-         select n, $1 from unnest($3::text[]) as n
+         select n, $1 from unnest($3::text[]) as n where exists (select 1 from b)
          returning id, lower(name) as lname
        ), ids as materialized (
          select ord::int, nextval(pg_get_serial_sequence('games', 'id'))::int as id
-         from generate_series(1, cardinality($5::int[])) as ord order by ord
+         from generate_series(1, cardinality($5::int[])) as ord where exists (select 1 from b) order by ord
        ), g as (
          insert into games (id, played_on, vp_target, ended_early, notes, created_by, import_batch_id)
          select ids.id, x.played_on, x.vp_target, x.ended_early, x.notes, $1, b.id
@@ -142,16 +160,17 @@ export async function createImport(db: Queryable, user: AppUser, batch: ImportBa
          returning 1
        )
        select b.id, b.source_name, b.created_at,
-              (select count(*) from g)::int as games, (select count(*) from new_p)::int as new_players
+              ((select count(*) from games where import_batch_id = b.id) + (select count(*) from g))::int as games,
+              (select count(*) from new_p)::int as new_players
        from b`,
       [
         user.id,
-        batch.sourceName,
+        'sourceName' in target ? target.sourceName : target.batchId,
         newNames,
-        batch.games.map((g) => g.playedOn),
-        batch.games.map((g) => g.vpTarget),
-        batch.games.map((g) => g.endedEarly),
-        batch.games.map((g) => g.notes),
+        games.map((g) => g.playedOn),
+        games.map((g) => g.vpTarget),
+        games.map((g) => g.endedEarly),
+        games.map((g) => g.notes),
         seatOrd,
         seatPlayer,
         seatNewName,
@@ -160,8 +179,7 @@ export async function createImport(db: Queryable, user: AppUser, batch: ImportBa
         seatWinner,
       ],
     );
-    if (!row) throw new Error('import insert returned no row');
-    return { ...toSummary(row), newPlayers: row.new_players };
+    return row ? { ...toSummary(row), newPlayers: row.new_players } : null;
   } catch (err) {
     // Someone added one of the new names to this roster between the check and the insert.
     if (isUniqueViolation(err, 'players_roster_name_unique')) {
@@ -169,6 +187,20 @@ export async function createImport(db: Queryable, user: AppUser, batch: ImportBa
     }
     throw err;
   }
+}
+
+/** Creates a batch with its first chunk of games. */
+export async function createImport(db: Queryable, user: AppUser, batch: ImportBatchInput): Promise<CreatedImport> {
+  const created = await insertGames(db, user, { sourceName: batch.sourceName }, batch.games);
+  if (!created) throw new Error('import insert returned no row');
+  return created;
+}
+
+/** Adds the next chunk of games to a batch the user created. Admins can't add to others' imports. */
+export async function addImportGames(db: Queryable, batchId: number, user: AppUser, chunk: ImportChunkInput): Promise<CreatedImport> {
+  const updated = await insertGames(db, user, { batchId }, chunk.games);
+  if (!updated) throw notFound('Import');
+  return updated;
 }
 
 /** Owner or admin only. The batch's games and their seats go with it (on delete cascade). */
