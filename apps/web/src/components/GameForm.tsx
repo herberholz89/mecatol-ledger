@@ -273,8 +273,12 @@ export function GameForm({
         {seatsArray.fields.map((field, i) => {
           const seatErrors = errors.seats?.[i];
           return (
-            <div key={field.id} className="grid grid-cols-[1fr_1fr_5rem_2rem] items-start gap-2 sm:grid-cols-[1fr_1fr_6rem_2rem]">
-              <div>
+            // Phones: player, points and remove on one line, the faction full width below it.
+            <div
+              key={field.id}
+              className="grid grid-cols-[1fr_4.5rem_2rem] items-start gap-2 border-b border-slate-200 pb-3 sm:grid-cols-[1fr_1fr_6rem_2rem] sm:border-0 sm:pb-0 dark:border-slate-800"
+            >
+              <div className="col-start-1 row-start-1">
                 <select className={inputClass} aria-label={`Player ${i + 1}`} {...register(`seats.${i}.playerId`)}>
                   <option value="">Player…</option>
                   {playerOptions.map((p) => (
@@ -286,14 +290,14 @@ export function GameForm({
                 </select>
                 <FieldError message={seatErrors?.playerId?.message} />
               </div>
-              <div>
+              <div className="col-span-2 row-start-2 sm:col-span-1 sm:col-start-2 sm:row-start-1">
                 <select className={inputClass} aria-label={`Faction ${i + 1}`} {...register(`seats.${i}.factionId`)}>
                   <option value="">Faction…</option>
                   <FactionOptions factions={factions} keep={keepFactions} />
                 </select>
                 <FieldError message={seatErrors?.factionId?.message} />
               </div>
-              <div>
+              <div className="col-start-2 row-start-1 sm:col-start-3">
                 <input
                   className={inputClass}
                   type="number"
@@ -311,7 +315,7 @@ export function GameForm({
                 disabled={seatsArray.fields.length <= MIN_SEATS}
                 aria-label={`Remove player ${i + 1}`}
                 title="Remove"
-                className="mt-2 rounded text-slate-400 hover:text-red-600 disabled:invisible"
+                className="col-start-3 row-start-1 mt-2 rounded text-slate-400 hover:text-red-600 disabled:invisible sm:col-start-4"
               >
                 ✕
               </button>

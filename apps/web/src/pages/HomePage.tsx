@@ -29,7 +29,7 @@ function topRows(rows: readonly Ranked[]): Ranked[] {
 
 function TopList({ title, rows, allLink, error }: { title: string; rows: Ranked[] | undefined; allLink: string; error: Error | null }) {
   return (
-    <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-800">
+    <div className="min-w-0 rounded-lg border border-slate-200 p-4 dark:border-slate-800">
       <div className="mb-3 flex items-baseline justify-between">
         <h2 className="font-medium">{title}</h2>
         <Link to={allLink} className="text-sm text-indigo-600 hover:underline dark:text-indigo-400">
@@ -44,7 +44,7 @@ function TopList({ title, rows, allLink, error }: { title: string; rows: Ranked[
           {rows.map((r, i) => (
             <li key={r.key} className="flex items-baseline gap-3">
               <span className="w-4 text-right text-slate-400 tabular-nums">{i + 1}</span>
-              <Link to={r.to} className="flex-1 truncate text-indigo-600 hover:underline dark:text-indigo-400">
+              <Link to={r.to} className="min-w-0 flex-1 truncate text-indigo-600 hover:underline dark:text-indigo-400">
                 {r.name}
               </Link>
               <span className="font-medium tabular-nums">{formatRate(r.winRate)}</span>

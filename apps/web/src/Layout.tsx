@@ -31,11 +31,15 @@ export function Layout() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <header className="border-b border-slate-200 dark:border-slate-800">
-        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-3">
-          <nav className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            <Link to="/" className="font-semibold tracking-tight">
-              Mecatol Ledger
-            </Link>
+        {/* Phones: name and account on one row, the links on a second row that scrolls sideways if needed. */}
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-x-6 gap-y-1 px-4 py-3 sm:flex-nowrap">
+          <Link to="/" className="shrink-0 font-semibold tracking-tight">
+            Mecatol Ledger
+          </Link>
+          <div className="shrink-0 sm:order-last">
+            <UserMenu />
+          </div>
+          <nav className="-mx-4 flex w-[calc(100%+2rem)] items-center gap-x-6 overflow-x-auto px-4 py-1 whitespace-nowrap sm:mx-0 sm:w-auto sm:flex-1 sm:overflow-visible sm:px-0">
             <NavLink to="/games" className={navClass}>
               Games
             </NavLink>
@@ -56,7 +60,6 @@ export function Layout() {
               </NavLink>
             )}
           </nav>
-          <UserMenu />
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-4 py-8">
