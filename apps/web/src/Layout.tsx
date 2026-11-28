@@ -1,4 +1,4 @@
-import { Link, Outlet } from 'react-router';
+import { Link, NavLink, Outlet } from 'react-router';
 import { useMe } from './useMe.js';
 
 function UserMenu() {
@@ -28,9 +28,17 @@ export function Layout() {
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <header className="border-b border-slate-200 dark:border-slate-800">
         <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <Link to="/" className="font-semibold tracking-tight">
-            Mecatol Ledger
-          </Link>
+          <nav className="flex items-center gap-6">
+            <Link to="/" className="font-semibold tracking-tight">
+              Mecatol Ledger
+            </Link>
+            <NavLink
+              to="/games"
+              className={({ isActive }) => `text-sm hover:underline ${isActive ? 'font-medium' : 'text-slate-600 dark:text-slate-400'}`}
+            >
+              Games
+            </NavLink>
+          </nav>
           <UserMenu />
         </div>
       </header>

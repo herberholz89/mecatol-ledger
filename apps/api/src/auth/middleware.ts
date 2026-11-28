@@ -1,5 +1,6 @@
 import { parseAdminEmails } from '@mecatol/shared';
 import { createMiddleware } from 'hono/factory';
+import { z } from 'zod';
 import { upsertAppUser } from '../db/users.js';
 import type { AppEnv } from '../env.js';
 import { getNeonSession } from './neon-auth.js';
@@ -32,5 +33,13 @@ export const requireUser = createMiddleware<AppEnv>(async (c, next) => {
 /** Use after `requireUser`. */
 export const requireAdmin = createMiddleware<AppEnv>(async (c, next) => {
   if (c.var.user.role !== 'admin') return c.json({ error: 'Admins only' }, 403);
+  await next();
+});
+
+const mineFlag = z.stringbool().optional().catch(undefined);
+
+/** For public list routes: requires a session only when the query asks for `mine=true`. */
+export const requireUserWhenMine = createMiddleware<AppEnv>(async (c, next) => {
+  if (mineFlag.parse(c.req.query('mine'))) return requireUser(c, next);
   await next();
 });

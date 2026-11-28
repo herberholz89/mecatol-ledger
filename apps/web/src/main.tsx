@@ -5,6 +5,9 @@ import { createBrowserRouter, RouterProvider } from 'react-router';
 import './index.css';
 import { Layout } from './Layout.js';
 import { AccountPage } from './pages/AccountPage.js';
+import { GameDetailPage } from './pages/GameDetailPage.js';
+import { GameFormPage } from './pages/GameFormPage.js';
+import { GamesPage } from './pages/GamesPage.js';
 import { HomePage } from './pages/HomePage.js';
 import { NotFoundPage } from './pages/NotFoundPage.js';
 import { SignInPage } from './pages/SignInPage.js';
@@ -18,6 +21,10 @@ const router = createBrowserRouter([
     element: <Layout />,
     children: [
       { index: true, element: <HomePage /> },
+      { path: 'games', element: <GamesPage /> },
+      { path: 'games/new', element: <GameFormPage /> },
+      { path: 'games/:id', element: <GameDetailPage /> },
+      { path: 'games/:id/edit', element: <GameFormPage /> },
       { path: 'signin', element: <SignInPage /> },
       { path: 'account', element: <AccountPage /> },
       { path: '*', element: <NotFoundPage /> },
