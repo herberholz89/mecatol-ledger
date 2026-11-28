@@ -265,7 +265,7 @@ PATCH  /api/me                   (user)  body: { displayName }
 2. **Accounts** (Neon Auth): spike first (see [Auth design](#auth-design-neon-auth)), then branch config (OTP only, Google + Organization off, trusted domain), `/api/auth/*` proxy, `/signin` page, `app_users` + `/api/me`, display names, roles, admin bootstrap via `ADMIN_EMAILS`, Gmail as Neon Auth custom SMTP. Confirm proxied and session-checked requests stay under the free plan's 10 ms CPU.
 3. **Log games**: roster players, game form with validation, games list + detail, owner edit/delete.
 4. **Import**: shared parser + tests against the real sheet, import page, batch undo.
-5. **Stats** ✅: `seat_results` view, `/api/stats/*`, factions + players pages with win rate vs expected charts and trends, dashboard (top factions/players need 3+ games), player-count, date and "mine" filters. Recharts loads in its own chunk on the pages that draw a chart. Still to do: measure `/api/stats/*` CPU in production with `wrangler tail`.
+5. **Stats** ✅: `seat_results` view, `/api/stats/*`, factions + players pages with win rate vs expected charts and trends, dashboard (top factions/players need 3+ games), player-count, date and "mine" filters. Recharts loads in its own chunk on the pages that draw a chart. Production CPU: 1–2 ms typical (see the CPU budget).
 6. **Admin & polish**: faction/alias management, player merge/claim, delete a player who isn't in any games (for typos and test names; players in games are archived or merged instead), mobile layout.
 
 ## 8. Out of scope for v1 (v2 candidates)
@@ -315,6 +315,18 @@ PATCH  /api/me                   (user)  body: { displayName }
   Re-measured with 25-game chunks (2026-11-28, 73 games, 3 requests, all `ok`): first chunk **11 ms**, then 6 and 4 ms. The chunks were the same size (~4.5 KB), so the first request's extra ~6 ms is a one-time cost of running the import code on a fresh isolate, not its games. A 5-game first chunk was tried next.
 
   Re-measured with the 5-game first chunk (2026-11-28, 73 games, 4 requests, all `ok`): first chunk **13 ms** for a 980-byte body, then 9, 8 and 6 ms for 25, 25 and 18 games. A small first chunk didn't help: the first import request on an isolate costs 11–15 ms whatever its size (one-time work the first time the import code runs), and the same isolate's first `GET /api/players` took 9 ms. Chunk size only changes the later requests, so the 5-game first chunk was reverted and every chunk is 25 games again. **Accepted as is:** Cloudflare's limits page says each isolate has "some built-in flexibility" for a Worker that "infrequently runs over" the limit, and only terminates one that hits it consistently. Imports are rare, every overrun so far returned `ok`, and if one were refused (error 1102) it would be the first chunk, which writes nothing, so the user just retries. Revisit if imports become frequent or `wrangler tail` shows `exceededCpu`; the fallback is the $5/month paid plan.
+- **Stats routes** (milestone 5, measured 2026-11-27 with `wrangler tail` against the 75 imported games): 62 requests simulating dashboard, list and detail page loads, all `ok`, no `exceededCpu`.
+
+  | Route | CPU ms (n) | Median |
+  |---|---|---|
+  | `GET /api/stats/overview` | 1–9 (7) | 1 |
+  | `GET /api/stats/factions` | 1–7 (11) | 2 |
+  | `GET /api/stats/factions/:id` | 1–10 (11) | 1 |
+  | `GET /api/stats/players` | 1–2 (8) | 1 |
+  | `GET /api/stats/players/:id` | 1–2 (3) | 2 |
+  | `GET /api/games` (recent games on the same pages) | 1–4 (20) | 2 |
+
+  The three high readings (7, 9, 10 ms) were each the first request on a new isolate. The dashboard sends four requests at once, so several isolates start together. This is the same one-time cost seen on `/api/health` (6–8 ms) and imports. Grouping happens in Postgres, and with more games only the response grows (one row per faction or player, plus one small row per result on detail pages). Revisit if a detail page's results list gets into the thousands.
 
 ### Pipeline
 1. Push or PR → **GitHub Actions**: `pnpm install`, typecheck, lint, Vitest (with a Postgres service), build.
