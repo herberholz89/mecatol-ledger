@@ -17,7 +17,7 @@ A website where friends log their own TI games and get better stats than the cur
 | Backend | **Hono on Cloudflare Workers, TypeScript strict** | REST API under `/api`. Replaces Fastify, which doesn't run on Workers |
 | Auth | **Neon Auth (managed Better Auth), passwordless** — *confirmed 2026-11-27, see [Auth design](#auth-design-neon-auth)* | **6-digit email code only** (Email OTP). Password sign-in and social providers turned off on the branch. Neon hosts the auth server and sends the codes; the Worker proxies `/api/auth/*` to it so session cookies stay first-party |
 | Validation / shared code | **`packages/shared`**: Zod schemas, types, spreadsheet parser | Same validation in browser and API; parser unit-tested in isolation |
-| DB | **PostgreSQL on Neon (free plan)** | `@neondatabase/serverless` driver; WebSocket `Pool` per request where a transaction is needed (game writes, imports). Stats as SQL views |
+| DB | **PostgreSQL on Neon (free plan)** | `@neondatabase/serverless` driver over **HTTP only**: atomic writes are single statements or non-interactive HTTP transactions (no WebSocket `Pool`; see the CPU budget). Stats as SQL views |
 | ORM / migrations | **Drizzle ORM** + SQL migrations (`drizzle-kit`) | |
 | Repo | **pnpm monorepo**: `apps/web`, `apps/api`, `packages/shared` | `/Users/cherberholz/WebstormProjects/mecatol-ledger` |
 | Hosting | **One Cloudflare Worker (free plan)** at `mecatol-ledger.<account>.workers.dev`, serving the React build as static assets + the API | No custom domain. Sign-in emails sent through a dedicated Gmail account over SMTP. See section 9 |
@@ -36,6 +36,7 @@ A website where friends log their own TI games and get better stats than the cur
 | Edit / delete a game | | Own games only (`created_by`) | Any |
 | Create players | | ✅ (in their roster) | ✅ |
 | Rename / merge players | | Own roster | Any |
+| Delete a player who isn't in any games | | Own roster | Any |
 | Import spreadsheet | | ✅ (games owned by importer) | ✅ |
 | Undo an import batch | | Own batches | Any |
 | Add / edit / archive factions, faction aliases | | | ✅ |
@@ -118,7 +119,7 @@ create table game_players (
 create unique index one_winner_per_game on game_players (game_id) where is_winner;
 ```
 
-**App-level rules** (Zod + inside the write transaction):
+**App-level rules** (Zod, re-checked by the API before the write):
 - 2–8 players per game. The spreadsheet is mostly 2-player games; up to 8 is allowed by Prophecy of Kings.
 - Exactly one winner.
 - Winner has the most points. A tie for most points is allowed only when `ended_early` is set.
@@ -192,7 +193,7 @@ Seeded aliases from typos found in the sheet: `necro virus` → Nekro Virus, `th
      - inline notes like "merge above and below for 1 game"
 
    Blocked games can be fixed inline or skipped.
-6. **Commit**: the normalized JSON is posted to `POST /api/imports`. The server re-validates everything and writes one `import_batch` plus its games in a single transaction.
+6. **Commit**: the normalized JSON is posted to `POST /api/imports`. The server re-validates everything and writes one `import_batch` plus its games atomically (one statement or one HTTP transaction, no WebSocket `Pool`).
 7. **Undo**: `DELETE /api/imports/:id` removes the whole batch.
 
 Known clean-up in the sheet: the multiplayer tab has seats with no player name and a game whose winner cell is blank, so those games will show as blocked until fixed in the review step.
@@ -222,13 +223,14 @@ GET    /api/health               (smoke test after deploy; checks DB connectivit
 GET    /api/games?playerId=&factionId=&playerCount=&from=&to=&mine=
 GET    /api/games/:id
 POST   /api/games                (user)
-PUT    /api/games/:id            (owner/admin)  replaces seats in one transaction
+PUT    /api/games/:id            (owner/admin)  replaces seats atomically (one HTTP transaction)
 DELETE /api/games/:id            (owner/admin)
 
 GET    /api/players?mine=        POST /api/players (user)
 GET    /api/players/:id          PATCH /api/players/:id (owner/admin)
 POST   /api/players/:id/claim    (user)
 POST   /api/players/:id/merge    (owner/admin)  body: { intoPlayerId }
+DELETE /api/players/:id          (owner/admin)  only if the player has no seats; otherwise 409
 
 GET    /api/factions             POST/PATCH /api/factions (admin)
 GET    /api/factions/:id         POST/DELETE /api/factions/aliases (admin)
@@ -255,7 +257,7 @@ PATCH  /api/me                   (user)  body: { displayName }
 3. **Log games**: roster players, game form with validation, games list + detail, owner edit/delete.
 4. **Import**: shared parser + tests against the real sheet, import page, batch undo.
 5. **Stats**: views, factions + players pages, dashboard, player-count filter.
-6. **Admin & polish**: faction/alias management, player merge/claim, mobile layout.
+6. **Admin & polish**: faction/alias management, player merge/claim, delete a player who isn't in any games (for typos and test names; players in games are archived or merged instead), mobile layout.
 
 ## 8. Out of scope for v1 (v2 candidates)
 **Playgroups / shared group rosters (confirmed v2)**, objectives scored, round timing, map/seats, Elo ratings, head-to-head records, game participants (non-owners) editing.
@@ -285,6 +287,7 @@ PATCH  /api/me                   (user)  body: { displayName }
 - Spreadsheet parsing runs in the browser. The server only validates and inserts the normalized JSON.
 - Stats are computed in Postgres. Waiting on the database doesn't count as CPU time.
 - Milestone 2 measured real CPU per route with `wrangler tail`: all routes 0–6 ms after the fix (see the spike results under "Auth design"). If something goes over, the fallback is Cloudflare's $5/month paid plan with no code changes.
+- **No WebSocket `Pool`** (milestone 3, measured 2026-11-28): game writes first used a per-request WebSocket `Pool` for transactions. `POST /api/games` took **16 ms** and `PUT` 10 ms, against 0–7 ms for every HTTP-driver route, because each new Pool connection does Postgres SCRAM-SHA-256 login (thousands of hash rounds) in the Worker. Writes now go over the HTTP driver, where Neon's proxy does the login: a single statement with data-modifying CTEs (create) or `sql.transaction([...])`, a non-interactive HTTP transaction (edit). Imports follow the same pattern.
 
 ### Pipeline
 1. Push or PR → **GitHub Actions**: `pnpm install`, typecheck, lint, Vitest (with a Postgres service), build.
@@ -388,3 +391,4 @@ Keep "Twilight Imperium" out of the name and domain (Fantasy Flight Games' trade
 - 2026-11-26: Sign-in is **passwordless, email code only** (no Discord/Google). Avoids password hashing, which would exceed the free plan's 10 ms CPU limit.
 - 2026-11-26: **No custom domain**; site on `workers.dev`. Sign-in emails go through a dedicated Gmail account over SMTP because Resend requires a verified domain.
 - 2026-11-27: Auth moves to **Neon Auth** (managed Better Auth), still email-code only. Neon sends the codes (Gmail as its custom SMTP in production). New `app_users` table; user columns become `uuid references app_users(id)`. See [Auth design](#auth-design-neon-auth).
+- 2026-11-28: Database writes use Neon's **HTTP driver only** (single statements or HTTP transactions). The WebSocket `Pool` took game writes over the 10 ms CPU limit.

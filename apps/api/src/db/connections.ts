@@ -1,25 +1,19 @@
-import { neon, Pool } from '@neondatabase/serverless';
-import { runTransaction, type Queryable } from './sql.js';
-
-/** Neon's HTTP driver: one round trip per query, no connection setup. Use for reads and single writes. */
-export function readDb(databaseUrl: string): Queryable {
-  const sql = neon(databaseUrl);
-  return { query: async (text, values) => ({ rows: await sql.query(text, values) }) };
-}
+import { neon } from '@neondatabase/serverless';
+import type { Db } from './sql.js';
 
 /**
- * Runs `fn` in a transaction on a WebSocket Pool created for this request and closed afterwards
- * (Workers can't share sockets between requests).
+ * The database over Neon's HTTP driver. Every call is one HTTPS round trip; Neon's proxy logs in to
+ * Postgres, so the Worker does no SCRAM password hashing. (A WebSocket `Pool` does that hashing in
+ * the Worker on every new connection, which took POST /api/games to 16 ms CPU against the free
+ * plan's 10 ms.) Atomic multi-statement writes use `batch`, which is Neon's non-interactive HTTP
+ * transaction.
  */
-export async function withTransaction<T>(databaseUrl: string, fn: (tx: Queryable) => Promise<T>): Promise<T> {
-  const pool = new Pool({ connectionString: databaseUrl });
-  // An idle connection whose socket closes (as it does when the pool shuts down) makes the pool
-  // emit 'error'. Without a listener that's an uncaught exception, even though the request is done.
-  // Errors during a query still reject that query and reach the caller.
-  pool.on('error', (err: Error) => console.warn('Neon pool connection closed:', err.message));
-  try {
-    return await runTransaction(pool, fn);
-  } finally {
-    await pool.end();
-  }
+export function getDb(databaseUrl: string): Db {
+  const sql = neon(databaseUrl);
+  return {
+    query: async (text, values) => ({ rows: await sql.query(text, values) }),
+    batch: async (statements) => {
+      await sql.transaction(statements.map((s) => sql.query(s.text, s.values)));
+    },
+  };
 }

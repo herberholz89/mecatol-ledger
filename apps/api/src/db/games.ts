@@ -1,7 +1,7 @@
 import type { GameDetail, GameInput, GamesPage, GamesQuery, GameSummary, SeatInput } from '@mecatol/shared';
 import type { AppUser } from './schema.js';
 import { forbidden, HttpError, notFound } from '../http-error.js';
-import { iso, rows, type Queryable } from './sql.js';
+import { iso, rows, type Db, type Queryable } from './sql.js';
 
 interface SummaryRow {
   id: number;
@@ -133,32 +133,41 @@ export async function getGame(db: Queryable, id: number): Promise<GameDetail | u
   };
 }
 
+interface WriteContext {
+  /** The existing game's creator; null for a new game or a missing one. */
+  game_owner: string | null;
+  players: { id: number; name: string; archived: boolean; created_by: string }[] | null;
+  factions: { id: number; name: string; archived: boolean }[] | null;
+  previous: { player_id: number; faction_id: number }[] | null;
+}
+
+/** Everything a write needs to check, in one round trip. `gameId` is null for a new game. */
+async function loadWriteContext(db: Queryable, seats: SeatInput[], gameId: number | null): Promise<WriteContext> {
+  const [ctx] = await rows<WriteContext>(
+    db,
+    `select
+       (select created_by from games where id = $3) as game_owner,
+       (select json_agg(json_build_object('id', id, 'name', name, 'archived', archived, 'created_by', created_by))
+          from players where id = any($1::int[])) as players,
+       (select json_agg(json_build_object('id', id, 'name', name, 'archived', archived))
+          from factions where id = any($2::int[])) as factions,
+       (select json_agg(json_build_object('player_id', player_id, 'faction_id', faction_id))
+          from game_players where game_id = $3) as previous`,
+    [seats.map((s) => s.playerId), seats.map((s) => s.factionId), gameId],
+  );
+  if (!ctx) throw new Error('write context query returned no row');
+  return ctx;
+}
+
 /**
  * Checks that every seat's player is in the owner's roster and every faction exists. Archived
  * players and factions are refused unless they were already in the game being edited.
  */
-async function checkSeatRefs(tx: Queryable, ownerId: string, seats: SeatInput[], gameId?: number): Promise<void> {
-  const playerIds = seats.map((s) => s.playerId);
-  const factionIds = seats.map((s) => s.factionId);
-  // One connection runs one query at a time, so these are sequential.
-  const players = await rows<{ id: number; name: string; archived: boolean; created_by: string }>(
-    tx,
-    'select id, name, archived, created_by from players where id = any($1::int[])',
-    [playerIds],
-  );
-  const factions = await rows<{ id: number; name: string; archived: boolean }>(
-    tx,
-    'select id, name, archived from factions where id = any($1::int[])',
-    [factionIds],
-  );
-  const previous =
-    gameId === undefined
-      ? []
-      : await rows<{ player_id: number; faction_id: number }>(tx, 'select player_id, faction_id from game_players where game_id = $1', [gameId]);
-  const playerById = new Map(players.map((p) => [p.id, p]));
-  const factionById = new Map(factions.map((f) => [f.id, f]));
-  const hadPlayer = new Set(previous.map((p) => p.player_id));
-  const hadFaction = new Set(previous.map((p) => p.faction_id));
+function checkSeatRefs(ctx: WriteContext, ownerId: string, seats: SeatInput[]): void {
+  const playerById = new Map((ctx.players ?? []).map((p) => [p.id, p]));
+  const factionById = new Map((ctx.factions ?? []).map((f) => [f.id, f]));
+  const hadPlayer = new Set((ctx.previous ?? []).map((p) => p.player_id));
+  const hadFaction = new Set((ctx.previous ?? []).map((p) => p.faction_id));
 
   const issue = (i: number, field: 'playerId' | 'factionId', message: string) =>
     new HttpError(400, message, { issues: [{ code: 'custom', path: ['seats', i, field], message }] });
@@ -173,49 +182,67 @@ async function checkSeatRefs(tx: Queryable, ownerId: string, seats: SeatInput[],
   });
 }
 
-async function insertSeats(tx: Queryable, gameId: number, game: GameInput): Promise<void> {
-  await tx.query(
-    `insert into game_players (game_id, player_id, faction_id, points, is_winner)
-     select $1, s.player_id, s.faction_id, s.points, s.player_id = $5
-     from unnest($2::int[], $3::int[], $4::int[]) as s(player_id, faction_id, points)`,
-    [gameId, game.seats.map((s) => s.playerId), game.seats.map((s) => s.factionId), game.seats.map((s) => s.points), game.winnerPlayerId],
-  );
-}
+/** Seat arrays for `unnest`, in the order the statements below expect. */
+const seatArrays = (game: GameInput) => [
+  game.seats.map((s) => s.playerId),
+  game.seats.map((s) => s.factionId),
+  game.seats.map((s) => s.points),
+];
 
-/** Run inside a transaction. Seats must use the creator's roster. Returns the new game id. */
-export async function createGame(tx: Queryable, user: AppUser, game: GameInput): Promise<number> {
-  await checkSeatRefs(tx, user.id, game.seats);
+/**
+ * Seats must use the creator's roster. The game and its seats are inserted by one statement, so
+ * they're atomic without a transaction (data-modifying CTEs). Returns the new game id.
+ */
+export async function createGame(db: Queryable, user: AppUser, game: GameInput): Promise<number> {
+  checkSeatRefs(await loadWriteContext(db, game.seats, null), user.id, game.seats);
   const [row] = await rows<{ id: number }>(
-    tx,
-    `insert into games (played_on, vp_target, ended_early, notes, created_by)
-     values ($1, $2, $3, $4, $5) returning id`,
-    [game.playedOn, game.vpTarget, game.endedEarly, game.notes, user.id],
+    db,
+    `with g as (
+       insert into games (played_on, vp_target, ended_early, notes, created_by)
+       values ($1, $2, $3, $4, $5) returning id
+     ), seats as (
+       insert into game_players (game_id, player_id, faction_id, points, is_winner)
+       select g.id, s.player_id, s.faction_id, s.points, s.player_id = $6
+       from g, unnest($7::int[], $8::int[], $9::int[]) as s(player_id, faction_id, points)
+     )
+     select id from g`,
+    [game.playedOn, game.vpTarget, game.endedEarly, game.notes, user.id, game.winnerPlayerId, ...seatArrays(game)],
   );
   if (!row) throw new Error('insert into games returned no row');
-  await insertSeats(tx, row.id, game);
   return row.id;
 }
 
-async function lockOwnedGame(tx: Queryable, id: number, user: AppUser): Promise<string> {
-  const [game] = await rows<{ created_by: string }>(tx, 'select created_by from games where id = $1 for update', [id]);
-  if (!game) throw notFound('Game');
-  if (user.role !== 'admin' && game.created_by !== user.id) throw forbidden('Only the person who logged this game or an admin can change it');
-  return game.created_by;
-}
-
 /**
- * Run inside a transaction. Owner or admin only. Replaces all seats. Seats must use the roster of
- * the game's creator, so an admin editing someone else's game picks from that person's roster.
+ * Owner or admin only. Replaces all seats. Seats must use the roster of the game's creator, so an
+ * admin editing someone else's game picks from that person's roster.
+ *
+ * The update, seat delete and seat insert run as one batch (an HTTP transaction). They can't be one
+ * statement: CTE parts run in no fixed order, so re-inserting a seat key the same statement deletes
+ * could collide. Each statement repeats `id = $1 and created_by = $2`, so a game deleted after the
+ * checks above leaves the batch doing nothing and the route answers 404.
  */
-export async function updateGame(tx: Queryable, id: number, user: AppUser, game: GameInput): Promise<void> {
-  const ownerId = await lockOwnedGame(tx, id, user);
-  await checkSeatRefs(tx, ownerId, game.seats, id);
-  await tx.query(
-    `update games set played_on = $2, vp_target = $3, ended_early = $4, notes = $5, updated_at = now() where id = $1`,
-    [id, game.playedOn, game.vpTarget, game.endedEarly, game.notes],
-  );
-  await tx.query('delete from game_players where game_id = $1', [id]);
-  await insertSeats(tx, id, game);
+export async function updateGame(db: Db, id: number, user: AppUser, game: GameInput): Promise<void> {
+  const ctx = await loadWriteContext(db, game.seats, id);
+  const ownerId = ctx.game_owner;
+  if (!ownerId) throw notFound('Game');
+  if (user.role !== 'admin' && ownerId !== user.id) throw forbidden('Only the person who logged this game or an admin can change it');
+  checkSeatRefs(ctx, ownerId, game.seats);
+
+  const target = 'select id from games where id = $1 and created_by = $2';
+  await db.batch([
+    {
+      text: `update games set played_on = $3, vp_target = $4, ended_early = $5, notes = $6, updated_at = now()
+             where id in (${target})`,
+      values: [id, ownerId, game.playedOn, game.vpTarget, game.endedEarly, game.notes],
+    },
+    { text: `delete from game_players where game_id in (${target})`, values: [id, ownerId] },
+    {
+      text: `insert into game_players (game_id, player_id, faction_id, points, is_winner)
+             select t.id, s.player_id, s.faction_id, s.points, s.player_id = $3
+             from (${target}) t, unnest($4::int[], $5::int[], $6::int[]) as s(player_id, faction_id, points)`,
+      values: [id, ownerId, game.winnerPlayerId, ...seatArrays(game)],
+    },
+  ]);
 }
 
 /** Owner or admin only. Seats go with the game (on delete cascade). */
