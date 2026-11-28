@@ -8,6 +8,12 @@ export const IMPORT_MAX_GAMES = 500;
  * under the Workers free plan's 10 ms CPU (76 games in one request took 8–15 ms).
  */
 export const IMPORT_CHUNK_GAMES = 25;
+/**
+ * Games in an import's first request. The first request on a fresh Worker isolate also pays
+ * about 6 ms of one-time cost for the import code, so it carries fewer games (a 25-game first
+ * chunk took 11 ms; later 25-game chunks took 4–6 ms).
+ */
+export const IMPORT_FIRST_CHUNK_GAMES = 5;
 export const SOURCE_NAME_MAX = 200;
 
 const id = (message: string) => z.number({ error: message }).int(message).positive(message);

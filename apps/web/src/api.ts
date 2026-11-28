@@ -3,6 +3,7 @@ import {
   factionAliasSchema,
   factionSchema,
   IMPORT_CHUNK_GAMES,
+  IMPORT_FIRST_CHUNK_GAMES,
   importBatchSummarySchema,
   gameDetailSchema,
   gamesPageSchema,
@@ -132,19 +133,19 @@ export const addImportGames = (id: number, body: ImportChunkInput) => request(`/
 export const deleteImport = (id: number) => request(`/imports/${id}`, z.null(), { method: 'DELETE' });
 
 /**
- * Imports games in chunks of IMPORT_CHUNK_GAMES so each request stays under the Worker's CPU limit.
- * The first chunk creates the batch and the rest are added to it, in order. If a chunk fails, the
- * batch is deleted again so the import stays all or nothing.
+ * Imports games in chunks so each request stays under the Worker's CPU limit: a small first chunk
+ * (IMPORT_FIRST_CHUNK_GAMES) that creates the batch, then chunks of IMPORT_CHUNK_GAMES added to it,
+ * in order. If a chunk fails, the batch is deleted again so the import stays all or nothing.
  */
 export async function importInChunks(
   sourceName: string,
   games: ImportGame[],
   onProgress: (saved: number) => void,
 ): Promise<CreatedImport> {
-  const chunks: ImportGame[][] = [];
-  for (let i = 0; i < games.length; i += IMPORT_CHUNK_GAMES) chunks.push(games.slice(i, i + IMPORT_CHUNK_GAMES));
+  const chunks: ImportGame[][] = [games.slice(0, IMPORT_FIRST_CHUNK_GAMES)];
+  for (let i = IMPORT_FIRST_CHUNK_GAMES; i < games.length; i += IMPORT_CHUNK_GAMES) chunks.push(games.slice(i, i + IMPORT_CHUNK_GAMES));
   const [first, ...rest] = chunks;
-  if (!first) throw new Error('Nothing to import');
+  if (!first?.length) throw new Error('Nothing to import');
 
   let result = await createImport({ sourceName, games: first });
   let newPlayers = result.newPlayers;
