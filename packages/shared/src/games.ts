@@ -65,11 +65,40 @@ export const playerSchema = z.object({
 });
 export type Player = z.infer<typeof playerSchema>;
 
+/** A player as `/api/players` returns it: who claimed it and how many games it's in. */
+export const rosterPlayerSchema = playerSchema.extend({
+  /** The account that claimed this player ("This is me"), if any. */
+  userId: z.uuid().nullable(),
+  claimedByName: z.string().nullable(),
+  /** Seats in games. Only players with none can be deleted. */
+  games: z.number().int(),
+});
+export type RosterPlayer = z.infer<typeof rosterPlayerSchema>;
+
 /** Query of `GET /api/players`. `mine` needs a session. */
 export const playersQuerySchema = z.object({
   mine: z.stringbool().optional(),
   createdBy: z.uuid().optional(),
+  /** The player an account claimed (at most one). */
+  claimedBy: z.uuid().optional(),
 });
+
+/** Body of `POST /api/players/:id/merge`: moves the player's seats into another player in the same roster. */
+export const mergePlayerSchema = z.object({ intoPlayerId: z.number().int().positive('Pick a player') });
+export type MergePlayer = z.infer<typeof mergePlayerSchema>;
+
+/** Who may rename, archive, merge or delete a player: the roster owner or an admin. */
+export function canManagePlayer(user: { id: string; role: string } | null | undefined, createdBy: string): boolean {
+  return !!user && (user.role === 'admin' || user.id === createdBy);
+}
+
+/** Who may remove a player's claim: the claimant, the roster owner or an admin. */
+export function canUnclaimPlayer(
+  user: { id: string; role: string } | null | undefined,
+  player: { createdBy: string; userId: string | null },
+): boolean {
+  return !!user && player.userId !== null && (player.userId === user.id || canManagePlayer(user, player.createdBy));
+}
 
 // ---------------------------------------------------------------------------------------------
 // Games

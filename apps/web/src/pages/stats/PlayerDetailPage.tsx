@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router';
-import { fetchPlayerStatsDetail } from '../../api.js';
+import { fetchPlayer, fetchPlayerStatsDetail } from '../../api.js';
 import { TrendChart } from '../../components/lazyCharts.js';
 import { FormError } from '../../components/form.js';
 import { RecentGames } from '../../components/GamesTable.js';
+import { ClaimControl, ManagePlayer } from '../../components/PlayerTools.js';
 import { StatsFilters, StatTable, StatTiles, useStatsFilter } from '../../components/stats.js';
 import { queryKeys } from '../../queries.js';
 
@@ -16,6 +17,8 @@ export function PlayerDetailPage() {
     queryFn: () => fetchPlayerStatsDetail(id, filter),
     enabled: ready && Number.isInteger(id),
   });
+  // Claim and roster details; the stats response carries only the basics.
+  const rosterPlayer = useQuery({ queryKey: queryKeys.player(id), queryFn: () => fetchPlayer(id), enabled: Number.isInteger(id) });
 
   if (detail.isError) return <FormError message={detail.error.message} />;
   if (!detail.data) return <p>Loading…</p>;
@@ -32,6 +35,11 @@ export function PlayerDetailPage() {
           In {player.ownerName ?? 'an unnamed user'}'s roster
           {player.archived && ' · archived'}
         </p>
+        {rosterPlayer.data && (
+          <div className="mt-2">
+            <ClaimControl player={rosterPlayer.data} />
+          </div>
+        )}
       </div>
       <StatsFilters state={state} />
       <StatTiles line={totals} />
@@ -51,6 +59,7 @@ export function PlayerDetailPage() {
         <h2 className="font-medium">History</h2>
         <RecentGames filter={{ ...filter, playerId: player.id }} limit={10} />
       </div>
+      {rosterPlayer.data && <ManagePlayer player={rosterPlayer.data} />}
     </section>
   );
 }

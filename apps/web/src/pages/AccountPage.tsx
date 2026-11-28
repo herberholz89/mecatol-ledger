@@ -4,6 +4,7 @@ import { signOut } from '../auth.js';
 import { DisplayNameForm } from '../components/DisplayNameForm.js';
 import { FormError } from '../components/form.js';
 import { MyImports } from '../components/MyImports.js';
+import { MyRoster } from '../components/PlayerTools.js';
 import { ME_QUERY_KEY, useMe } from '../useMe.js';
 
 export function AccountPage() {
@@ -39,6 +40,7 @@ export function AccountPage() {
         <dd>{user.role === 'admin' ? 'Admin' : 'User'}</dd>
       </dl>
       <DisplayNameForm key={user.displayName ?? ''} initial={user.displayName} />
+      <MyRoster userId={user.id} />
       <MyImports />
       <div className="border-t border-slate-200 pt-6 dark:border-slate-800">
         <FormError message={out.error?.message ?? null} />

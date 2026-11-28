@@ -1,12 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchFactionAliases, fetchFactions, fetchPlayers } from './api.js';
+import { fetchFactionAliases, fetchFactions, fetchPlayers, type PlayersFilter } from './api.js';
 
 export const queryKeys = {
   factions: ['factions'] as const,
   factionAliases: ['factions', 'aliases'] as const,
   imports: ['imports'] as const,
-  players: (filter: { mine?: boolean; createdBy?: string } = {}) => ['players', filter] as const,
+  players: (filter: PlayersFilter = {}) => ['players', filter] as const,
   allPlayers: ['players'] as const,
+  /** Under `players`, so anything that invalidates players refreshes it. */
+  player: (id: number) => ['players', 'one', id] as const,
   games: ['games'] as const,
   /** Under `games`, so anything that invalidates games refreshes stats too. */
   stats: (kind: string, ...args: unknown[]) => ['games', 'stats', kind, ...args] as const,
@@ -20,8 +22,11 @@ export function useFactions() {
 
 /** All players, or one roster by owner id. */
 export function usePlayers(createdBy?: string) {
-  const filter = createdBy ? { createdBy } : {};
-  return useQuery({ queryKey: queryKeys.players(filter), queryFn: () => fetchPlayers(filter) });
+  return usePlayerList(createdBy ? { createdBy } : {});
+}
+
+export function usePlayerList(filter: PlayersFilter, enabled = true) {
+  return useQuery({ queryKey: queryKeys.players(filter), queryFn: () => fetchPlayers(filter), enabled });
 }
 
 export function useFactionAliases() {
