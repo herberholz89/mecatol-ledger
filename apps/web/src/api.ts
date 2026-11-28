@@ -8,7 +8,7 @@ import {
   gamesPageSchema,
   healthResponseSchema,
   meResponseSchema,
-  playerSchema,
+  rosterPlayerSchema,
   factionStatsDetailSchema,
   factionStatsSchema,
   playerStatsDetailSchema,
@@ -17,6 +17,7 @@ import {
   type CreateFactionAlias,
   type CreatePlayer,
   type GameInput,
+  type MergePlayer,
   type GamesPage,
   type HealthResponse,
   type CreatedImport,
@@ -24,7 +25,8 @@ import {
   type ImportChunkInput,
   type ImportGame,
   type MeResponse,
-  type Player,
+  type RosterPlayer,
+  type UpdatePlayer,
   type UpdateMe,
 } from '@mecatol/shared';
 import { z } from 'zod';
@@ -92,14 +94,27 @@ const json = (method: string, body: unknown): RequestInit => ({ method, body: JS
 
 export const fetchFactions = () => request('/factions', factionSchema.array());
 
-export function fetchPlayers(filter: { mine?: boolean; createdBy?: string } = {}): Promise<Player[]> {
+export interface PlayersFilter {
+  mine?: boolean;
+  createdBy?: string;
+  claimedBy?: string;
+}
+
+export function fetchPlayers(filter: PlayersFilter = {}): Promise<RosterPlayer[]> {
   const qs = new URLSearchParams();
   if (filter.mine) qs.set('mine', 'true');
   if (filter.createdBy) qs.set('createdBy', filter.createdBy);
-  return request(`/players${qs.size ? `?${qs}` : ''}`, playerSchema.array());
+  if (filter.claimedBy) qs.set('claimedBy', filter.claimedBy);
+  return request(`/players${qs.size ? `?${qs}` : ''}`, rosterPlayerSchema.array());
 }
 
-export const createPlayer = (body: CreatePlayer) => request('/players', playerSchema, json('POST', body));
+export const fetchPlayer = (id: number) => request(`/players/${id}`, rosterPlayerSchema);
+export const createPlayer = (body: CreatePlayer) => request('/players', rosterPlayerSchema, json('POST', body));
+export const updatePlayer = (id: number, body: UpdatePlayer) => request(`/players/${id}`, rosterPlayerSchema, json('PATCH', body));
+export const deletePlayer = (id: number) => request(`/players/${id}`, z.null(), { method: 'DELETE' });
+export const claimPlayer = (id: number) => request(`/players/${id}/claim`, rosterPlayerSchema, { method: 'POST' });
+export const unclaimPlayer = (id: number) => request(`/players/${id}/claim`, rosterPlayerSchema, { method: 'DELETE' });
+export const mergePlayer = (id: number, body: MergePlayer) => request(`/players/${id}/merge`, rosterPlayerSchema, json('POST', body));
 
 export interface GamesFilter {
   playerId?: number | undefined;
