@@ -25,6 +25,11 @@ export function cacheUser(user: AppUser, now = Date.now()): void {
   cache.set(user.id, { user, expires: now + TTL_MS });
 }
 
+/** Drops one user, e.g. after an admin changes their role. Other isolates catch up within TTL_MS. */
+export function forgetUser(id: string): void {
+  cache.delete(id);
+}
+
 /** For tests. */
 export function clearUserCache(): void {
   cache.clear();

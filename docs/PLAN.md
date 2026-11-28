@@ -237,9 +237,14 @@ DELETE /api/players/:id/claim    (claimant/owner/admin)
 POST   /api/players/:id/merge    (owner/admin)  body: { intoPlayerId }; same roster only; 409 if they share a game or both are claimed
 DELETE /api/players/:id          (owner/admin)  only if the player has no seats; otherwise 409
 
-GET    /api/factions             POST/PATCH /api/factions (admin)
-GET    /api/factions/:id         POST/DELETE /api/factions/aliases (admin)
+GET    /api/factions             POST /api/factions (admin)  body: { name, expansion }; 409 if the name is taken (ignoring case)
+                                 PATCH /api/factions/:id (admin)  body: { name?, expansion?, archived? }. Factions are never deleted
 GET    /api/factions/aliases     (public; used by the importer)
+POST   /api/factions/aliases     (admin)  body: { alias, factionId }
+DELETE /api/factions/aliases/:alias  (admin)  the alias as typed, URL-encoded; its normalized form is removed
+
+GET    /api/users                (admin)  every user with games logged, roster size and `adminByEmail`
+PATCH  /api/users/:id            (admin)  body: { role }. Not your own role; not an ADMIN_EMAILS user (409)
 
 GET    /api/stats/overview?playerCount=&from=&to=&mine=      games, players, factions played, avg spread
 GET    /api/stats/factions?playerCount=&from=&to=&mine=      every faction (archived ones only with games)
@@ -270,7 +275,7 @@ PATCH  /api/me                   (user)  body: { displayName }
 5. **Stats** ✅: `seat_results` view, `/api/stats/*`, factions + players pages with win rate vs expected charts and trends, dashboard (top factions/players need 3+ games), player-count, date and "mine" filters. Recharts loads in its own chunk on the pages that draw a chart. Production CPU: 1–2 ms typical (see the CPU budget).
 6. **Admin & polish**, in three PRs:
    1. **Roster management**: rename, archive, merge, claim/unclaim, delete a player who isn't in any games (for typos and test names; players in games are archived or merged instead). Tools sit on the player page for the roster owner or an admin; the account page lists your roster (with game counts) and your claimed player.
-   2. **`/admin`**: factions and aliases, users and roles (list users, promote or demote; you can't demote yourself; `ADMIN_EMAILS` users are re-promoted on their next sign-in).
+   2. **`/admin`**: add, rename, move or archive factions (never delete); add and delete aliases; list users and promote or demote. You can't change your own role, and `ADMIN_EMAILS` users can't be demoted here (they'd be promoted again on their next request), so the API refuses with 409. A role change applies at once on the isolate that made it and within a minute (the per-isolate user cache) elsewhere. Deleting any game stays on the game page, where admins already see Edit and Delete.
    3. **Mobile layout** pass.
 
 ## 8. Out of scope for v1 (v2 candidates)
@@ -439,5 +444,5 @@ Keep "Twilight Imperium" out of the name and domain (Fantasy Flight Games' trade
 - 2026-11-28: Milestone 4 (import): SheetJS from its CDN tarball, behind a separate `@mecatol/shared/xlsx` entry. "No date" is info, not a warning. Imports may use archived players and factions. Players an import creates stay after an undo (deleting unused players is milestone 6). `POST /api/factions/aliases` added now for the importer; alias deletion stays in milestone 6.
 - 2026-11-28: Imports are sent in **25-game chunks** (`POST /api/imports`, then `POST /api/imports/:id/games`). The sheet in one request took 8–15 ms CPU against the 10 ms limit. A failed chunk makes the browser undo the batch. No schema change.
 - 2026-11-28: Tried a **5-game first chunk** (a 25-game first chunk took 11 ms), but it still took 13 ms: the first import request on an isolate costs 11–15 ms whatever its size. Reverted to 25 games for every chunk. **Accepted:** Cloudflare tolerates infrequent overruns, imports are rare, and a refused first chunk writes nothing.
-- 2026-11-27: Milestone 6 split into three PRs (roster management, `/admin`, mobile). **Claims:** any signed-in user can claim an unclaimed player in any roster (one per account); the claimant, roster owner or an admin can remove a claim. **Merge:** same roster only; refused if both players were in one game or both are claimed; a claim moves to the merged player. **Roles:** admins list users and change roles on `/admin`. No schema change.
+- 2026-11-27: Milestone 6 split into three PRs (roster management, `/admin`, mobile). **Claims:** any signed-in user can claim an unclaimed player in any roster (one per account); the claimant, roster owner or an admin can remove a claim. **Merge:** same roster only; refused if both players were in one game or both are claimed; a claim moves to the merged player. **Roles:** admins list users and change roles on `/admin`; demoting an `ADMIN_EMAILS` user is refused rather than silently undone on their next sign-in. No schema change.
 - 2026-11-27: Milestone 5 (stats): one **`seat_results` view** instead of `faction_stats` / `player_stats`, since every stats query is filtered before grouping. `mine` on stats means games you logged, as on the games list. The dashboard ranks only factions and players with 3+ games.
