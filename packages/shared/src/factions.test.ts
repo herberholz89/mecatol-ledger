@@ -34,6 +34,7 @@ describe('resolveFactionName', () => {
   it('matches ignoring case, whitespace and a leading "The"', () => {
     expect(resolve('  the   EMBERS of muaat ')).toBe('Embers of Muaat');
     expect(resolve('Nekro Virus')).toBe('Nekro Virus');
+    expect(resolve('The Firmament/ Obsidian')).toBe('Firmament / Obsidian');
   });
 
   it('uses aliases for known typos', () => {

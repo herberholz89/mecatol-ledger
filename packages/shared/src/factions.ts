@@ -58,9 +58,9 @@ export function normalizeAlias(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
-/** Alias normalization plus dropping a leading "the", for loose name matching. */
+/** Alias normalization plus dropping a leading "the" and spaces around "/", for loose name matching. */
 export function normalizeFactionName(raw: string): string {
-  return normalizeAlias(raw).replace(/^the /, '');
+  return normalizeAlias(raw).replace(/^the /, '').replace(/ ?\/ ?/g, '/');
 }
 
 /**
@@ -75,5 +75,7 @@ export function resolveFactionName(
   const alias = aliases[normalizeAlias(raw)] ?? aliases[normalizeFactionName(raw)];
   if (alias !== undefined) return alias;
   const wanted = normalizeFactionName(raw);
+  // Aliases are stored with normalizeAlias, so compare them loosely too.
+  for (const [key, name] of Object.entries(aliases)) if (normalizeFactionName(key) === wanted) return name;
   return factionNames.find((name) => normalizeFactionName(name) === wanted) ?? null;
 }

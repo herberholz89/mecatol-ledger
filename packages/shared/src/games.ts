@@ -97,6 +97,74 @@ export function topScorers(seats: readonly { playerId: number; points: number }[
   return scored.filter((s) => s.points === top).map((s) => s.playerId);
 }
 
+export interface RuleSeat {
+  /** Identifies the player: two seats with the same key are the same player. */
+  playerKey: string | number;
+  factionId: number;
+  points: number;
+}
+
+export interface RuleIssue {
+  /** The seat the issue is about; undefined for the winner. */
+  seat?: number;
+  field: 'player' | 'faction' | 'winner';
+  message: string;
+}
+
+/**
+ * The domain rules shared by logged and imported games: no player or faction twice, the winner has
+ * the most points, and a tie for the most points only when the game ended early. `winner` is a seat
+ * index (-1 when the winner isn't one of the seats). Seat count is checked by the schemas.
+ */
+export function gameRuleIssues(seats: readonly RuleSeat[], winner: number, endedEarly: boolean): RuleIssue[] {
+  const issues: RuleIssue[] = [];
+  const seenPlayers = new Set<string | number>();
+  const seenFactions = new Set<number>();
+  seats.forEach((seat, i) => {
+    if (seenPlayers.has(seat.playerKey)) issues.push({ seat: i, field: 'player', message: 'This player is already in the game' });
+    if (seenFactions.has(seat.factionId)) issues.push({ seat: i, field: 'faction', message: 'This faction is already in the game' });
+    seenPlayers.add(seat.playerKey);
+    seenFactions.add(seat.factionId);
+  });
+
+  const winnerSeat = seats[winner];
+  if (!winnerSeat) {
+    issues.push({ field: 'winner', message: 'The winner must be one of the players' });
+    return issues;
+  }
+  const top = Math.max(...seats.map((s) => s.points));
+  const tied = seats.filter((s) => s.points === top).length;
+  if (winnerSeat.points !== top) {
+    issues.push({ field: 'winner', message: 'The winner must have the most points' });
+  } else if (tied > 1 && !endedEarly) {
+    issues.push({ field: 'winner', message: 'A tie for the most points is only allowed when the game ended early' });
+  }
+  return issues;
+}
+
+/** Fields every game has, logged or imported. */
+export const gameFieldsShape = {
+  playedOn: isoDateSchema.nullable(),
+  vpTarget: z
+    .number({ error: 'Enter a VP target' })
+    .int()
+    .min(VP_TARGET_MIN, `At least ${VP_TARGET_MIN}`)
+    .max(VP_TARGET_MAX, `At most ${VP_TARGET_MAX}`),
+  endedEarly: z.boolean(),
+  notes: z
+    .string()
+    .trim()
+    .max(NOTES_MAX, `At most ${NOTES_MAX} characters`)
+    .nullable()
+    .transform((v) => (v ? v : null)),
+};
+
+export const seatsArraySchema = <T extends z.ZodType>(seat: T) =>
+  z
+    .array(seat)
+    .min(MIN_SEATS, `At least ${MIN_SEATS} players`)
+    .max(MAX_SEATS, `At most ${MAX_SEATS} players`);
+
 /**
  * Body of `POST /api/games` and `PUT /api/games/:id`. Enforces the domain rules:
  * 2–8 seats, no player or faction twice, exactly one winner who has the most points,
@@ -104,52 +172,19 @@ export function topScorers(seats: readonly { playerId: number; points: number }[
  */
 export const gameInputSchema = z
   .object({
-    playedOn: isoDateSchema.nullable(),
-    vpTarget: z
-      .number({ error: 'Enter a VP target' })
-      .int()
-      .min(VP_TARGET_MIN, `At least ${VP_TARGET_MIN}`)
-      .max(VP_TARGET_MAX, `At most ${VP_TARGET_MAX}`),
-    endedEarly: z.boolean(),
-    notes: z
-      .string()
-      .trim()
-      .max(NOTES_MAX, `At most ${NOTES_MAX} characters`)
-      .nullable()
-      .transform((v) => (v ? v : null)),
-    seats: z
-      .array(seatInputSchema)
-      .min(MIN_SEATS, `At least ${MIN_SEATS} players`)
-      .max(MAX_SEATS, `At most ${MAX_SEATS} players`),
+    ...gameFieldsShape,
+    seats: seatsArraySchema(seatInputSchema),
     winnerPlayerId: id('Pick the winner'),
   })
   .superRefine((game, ctx) => {
-    const seenPlayers = new Set<number>();
-    const seenFactions = new Set<number>();
-    game.seats.forEach((seat, i) => {
-      if (seenPlayers.has(seat.playerId)) {
-        ctx.addIssue({ code: 'custom', path: ['seats', i, 'playerId'], message: 'This player is already in the game' });
-      }
-      if (seenFactions.has(seat.factionId)) {
-        ctx.addIssue({ code: 'custom', path: ['seats', i, 'factionId'], message: 'This faction is already in the game' });
-      }
-      seenPlayers.add(seat.playerId);
-      seenFactions.add(seat.factionId);
-    });
-
-    if (!seenPlayers.has(game.winnerPlayerId)) {
-      ctx.addIssue({ code: 'custom', path: ['winnerPlayerId'], message: 'The winner must be one of the players' });
-      return;
-    }
-    const top = topScorers(game.seats);
-    if (!top.includes(game.winnerPlayerId)) {
-      ctx.addIssue({ code: 'custom', path: ['winnerPlayerId'], message: 'The winner must have the most points' });
-    } else if (top.length > 1 && !game.endedEarly) {
-      ctx.addIssue({
-        code: 'custom',
-        path: ['winnerPlayerId'],
-        message: 'A tie for the most points is only allowed when the game ended early',
-      });
+    const seats = game.seats.map((s) => ({ playerKey: s.playerId, factionId: s.factionId, points: s.points }));
+    const winner = game.seats.findIndex((s) => s.playerId === game.winnerPlayerId);
+    for (const issue of gameRuleIssues(seats, winner, game.endedEarly)) {
+      const path =
+        issue.seat === undefined
+          ? ['winnerPlayerId']
+          : ['seats', issue.seat, issue.field === 'player' ? 'playerId' : 'factionId'];
+      ctx.addIssue({ code: 'custom', path, message: issue.message });
     }
   });
 export type GameInput = z.infer<typeof gameInputSchema>;

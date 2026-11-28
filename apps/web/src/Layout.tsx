@@ -23,7 +23,11 @@ function UserMenu() {
   );
 }
 
+const navClass = ({ isActive }: { isActive: boolean }) =>
+  `text-sm hover:underline ${isActive ? 'font-medium' : 'text-slate-600 dark:text-slate-400'}`;
+
 export function Layout() {
+  const me = useMe();
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       <header className="border-b border-slate-200 dark:border-slate-800">
@@ -32,12 +36,14 @@ export function Layout() {
             <Link to="/" className="font-semibold tracking-tight">
               Mecatol Ledger
             </Link>
-            <NavLink
-              to="/games"
-              className={({ isActive }) => `text-sm hover:underline ${isActive ? 'font-medium' : 'text-slate-600 dark:text-slate-400'}`}
-            >
+            <NavLink to="/games" className={navClass}>
               Games
             </NavLink>
+            {me.data && (
+              <NavLink to="/import" className={navClass}>
+                Import
+              </NavLink>
+            )}
           </nav>
           <UserMenu />
         </div>
