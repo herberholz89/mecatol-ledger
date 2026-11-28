@@ -12,6 +12,10 @@ import { HomePage } from './pages/HomePage.js';
 import { ImportPage } from './pages/import/ImportPage.js';
 import { NotFoundPage } from './pages/NotFoundPage.js';
 import { SignInPage } from './pages/SignInPage.js';
+import { FactionDetailPage } from './pages/stats/FactionDetailPage.js';
+import { FactionsPage } from './pages/stats/FactionsPage.js';
+import { PlayerDetailPage } from './pages/stats/PlayerDetailPage.js';
+import { PlayersPage } from './pages/stats/PlayersPage.js';
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000 } },
@@ -26,6 +30,10 @@ const router = createBrowserRouter([
       { path: 'games/new', element: <GameFormPage /> },
       { path: 'games/:id', element: <GameDetailPage /> },
       { path: 'games/:id/edit', element: <GameFormPage /> },
+      { path: 'factions', element: <FactionsPage /> },
+      { path: 'factions/:id', element: <FactionDetailPage /> },
+      { path: 'players', element: <PlayersPage /> },
+      { path: 'players/:id', element: <PlayerDetailPage /> },
       { path: 'import', element: <ImportPage /> },
       { path: 'signin', element: <SignInPage /> },
       { path: 'account', element: <AccountPage /> },

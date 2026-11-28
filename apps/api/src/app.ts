@@ -8,6 +8,7 @@ import { health } from './routes/health.js';
 import { importsRoute } from './routes/imports.js';
 import { me } from './routes/me.js';
 import { playersRoute } from './routes/players.js';
+import { statsRoute } from './routes/stats.js';
 
 export const app = new Hono<AppEnv>().basePath('/api');
 
@@ -18,6 +19,7 @@ app.route('/factions', factionsRoute);
 app.route('/players', playersRoute);
 app.route('/games', gamesRoute);
 app.route('/imports', importsRoute);
+app.route('/stats', statsRoute);
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 app.onError((err, c) => {

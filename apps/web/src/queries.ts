@@ -8,6 +8,8 @@ export const queryKeys = {
   players: (filter: { mine?: boolean; createdBy?: string } = {}) => ['players', filter] as const,
   allPlayers: ['players'] as const,
   games: ['games'] as const,
+  /** Under `games`, so anything that invalidates games refreshes stats too. */
+  stats: (kind: string, ...args: unknown[]) => ['games', 'stats', kind, ...args] as const,
   game: (id: number) => ['game', id] as const,
 };
 

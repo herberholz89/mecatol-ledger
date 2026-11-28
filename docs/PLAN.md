@@ -50,6 +50,8 @@ Open signups mean junk data can reach global faction stats. Mitigations in v1: e
 
 > ⚠️ **Schema changes since first draft:** added `users` (via Better Auth) with `role`; `players.created_by` and `players.user_id`; `games.created_by`, `games.import_batch_id`; `games.played_on` now **nullable** (much spreadsheet history has no date); new `faction_aliases` and `import_batches` tables; player count now **2–8**; `full_spread` removed (spread = 1st − 2nd only).
 >
+> ⚠️ **Changed 2026-11-27 (milestone 5, confirmed):** one `seat_results` view (a seat plus its game's player count, date and creator) replaces the planned `faction_stats` and `player_stats` views. Every stats request can be filtered, and filters must apply before grouping, so a pre-aggregated view would never be read.
+>
 > ⚠️ **Changed 2026-11-27 (Neon Auth, confirmed):** no Better Auth tables in `public` and no `alter table "user"`. Neon owns identity in the `neon_auth` schema. New app-owned **`app_users`** table (id = Neon Auth user id, `display_name`, `role`). Every `created_by` / `user_id` column becomes **`uuid references app_users(id)`** instead of `text references "user"(id)`. No foreign keys point into `neon_auth`.
 
 ```sql
@@ -142,17 +144,14 @@ select g.id as game_id, g.played_on, g.vp_target, g.ended_early, g.created_by,
 from games g join game_players gp on gp.game_id = g.id
 group by g.id;
 
-create view faction_stats as
-select gp.faction_id,
-       count(*)                              as games,
-       count(*) filter (where gp.is_winner)  as wins,
-       round(avg(gp.is_winner::int), 3)      as win_rate,
-       round(avg(1.0 / gs.player_count), 3)  as expected_win_rate,
-       round(avg(gp.points), 2)              as avg_points
-from game_players gp join game_summary gs using (game_id)
-group by gp.faction_id;
--- player_stats: same shape grouped by player_id.
--- Filtered variants (player count, date range, roster) run as parameterized queries over game_summary.
+-- One row per seat with its game's derived values (migration 0005). Stats queries filter it,
+-- then group by faction or player, so filters apply before aggregating.
+create view seat_results as
+select gp.game_id, gp.player_id, gp.faction_id, gp.points, gp.is_winner,
+       gs.player_count, gs.played_on, gs.created_by
+from game_players gp join game_summary gs using (game_id);
+-- Per faction or player: count(*) games, count(*) filter (where is_winner) wins,
+-- avg(is_winner::int) win rate, avg(1.0 / player_count) expected win rate, avg(points).
 ```
 
 ### Faction seed (30)
@@ -213,7 +212,7 @@ Known clean-up in the sheet: the multiplayer tab has seats with no player name a
 | `/games/:id` | Game detail | Seats by points, winner, spread, notes, who logged it. Edit/delete if owner or admin |
 | `/games/new`, `/games/:id/edit` | Log / edit game | Date, VP target, ended-early; 2–8 rows of player + faction + points; winner auto-selected from top score, overridable on a tie when ended early |
 | `/factions`, `/factions/:id` | Factions | Win rate vs expected, games, avg points; filter by player count and expansion; detail shows trend and who plays it |
-| `/players`, `/players/:id` | Players | Roster stats; detail shows faction record and history; "This is me" claim button |
+| `/players`, `/players/:id` | Players | Roster stats; detail shows faction record and history; "This is me" claim button (milestone 6) |
 | `/import` | Spreadsheet import | Flow in section 4 |
 | `/account` | Account | Profile, linked player, my imports (with undo) |
 | `/signin` | Auth | Enter email → enter 6-digit code (expiry set by Neon Auth). First sign-in creates the account and asks for a display name |
@@ -240,8 +239,12 @@ GET    /api/factions             POST/PATCH /api/factions (admin)
 GET    /api/factions/:id         POST/DELETE /api/factions/aliases (admin)
 GET    /api/factions/aliases     (public; used by the importer)
 
-GET    /api/stats/factions?playerCount=&from=&to=&mine=
-GET    /api/stats/players?playerCount=&from=&to=&mine=
+GET    /api/stats/overview?playerCount=&from=&to=&mine=      games, players, factions played, avg spread
+GET    /api/stats/factions?playerCount=&from=&to=&mine=      every faction (archived ones only with games)
+GET    /api/stats/factions/:id?…                              totals, who plays it, results oldest first
+GET    /api/stats/players?playerCount=&from=&to=&mine=       players with games
+GET    /api/stats/players/:id?…                               totals, record by faction, results oldest first
+       (stats: `mine` = games you logged, which are your roster's games; date filters drop undated games)
 
 POST   /api/imports              (user)  body: source name + first chunk (≤ 25 games); creates the batch
 POST   /api/imports/:id/games    (importer)  body: next chunk (≤ 25 games)
@@ -262,7 +265,7 @@ PATCH  /api/me                   (user)  body: { displayName }
 2. **Accounts** (Neon Auth): spike first (see [Auth design](#auth-design-neon-auth)), then branch config (OTP only, Google + Organization off, trusted domain), `/api/auth/*` proxy, `/signin` page, `app_users` + `/api/me`, display names, roles, admin bootstrap via `ADMIN_EMAILS`, Gmail as Neon Auth custom SMTP. Confirm proxied and session-checked requests stay under the free plan's 10 ms CPU.
 3. **Log games**: roster players, game form with validation, games list + detail, owner edit/delete.
 4. **Import**: shared parser + tests against the real sheet, import page, batch undo.
-5. **Stats**: views, factions + players pages, dashboard, player-count filter.
+5. **Stats** ✅: `seat_results` view, `/api/stats/*`, factions + players pages with win rate vs expected charts and trends, dashboard (top factions/players need 3+ games), player-count, date and "mine" filters. Recharts loads in its own chunk on the pages that draw a chart. Still to do: measure `/api/stats/*` CPU in production with `wrangler tail`.
 6. **Admin & polish**: faction/alias management, player merge/claim, delete a player who isn't in any games (for typos and test names; players in games are archived or merged instead), mobile layout.
 
 ## 8. Out of scope for v1 (v2 candidates)
@@ -419,3 +422,4 @@ Keep "Twilight Imperium" out of the name and domain (Fantasy Flight Games' trade
 - 2026-11-28: Milestone 4 (import): SheetJS from its CDN tarball, behind a separate `@mecatol/shared/xlsx` entry. "No date" is info, not a warning. Imports may use archived players and factions. Players an import creates stay after an undo (deleting unused players is milestone 6). `POST /api/factions/aliases` added now for the importer; alias deletion stays in milestone 6.
 - 2026-11-28: Imports are sent in **25-game chunks** (`POST /api/imports`, then `POST /api/imports/:id/games`). The sheet in one request took 8–15 ms CPU against the 10 ms limit. A failed chunk makes the browser undo the batch. No schema change.
 - 2026-11-28: Tried a **5-game first chunk** (a 25-game first chunk took 11 ms), but it still took 13 ms: the first import request on an isolate costs 11–15 ms whatever its size. Reverted to 25 games for every chunk. **Accepted:** Cloudflare tolerates infrequent overruns, imports are rare, and a refused first chunk writes nothing.
+- 2026-11-27: Milestone 5 (stats): one **`seat_results` view** instead of `faction_stats` / `player_stats`, since every stats query is filtered before grouping. `mine` on stats means games you logged, as on the games list. The dashboard ranks only factions and players with 3+ games.

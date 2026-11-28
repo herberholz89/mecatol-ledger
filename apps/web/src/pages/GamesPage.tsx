@@ -4,7 +4,8 @@ import type { ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { fetchGames, type GamesFilter } from '../api.js';
 import { FormError, inputClass } from '../components/form.js';
-import { formatDate, playerLabels } from '../format.js';
+import { GamesTable } from '../components/GamesTable.js';
+import { playerLabels } from '../format.js';
 import { queryKeys, useFactions, usePlayers } from '../queries.js';
 import { useMe } from '../useMe.js';
 
@@ -139,42 +140,7 @@ export function GamesPage() {
           )}
         </p>
       )}
-      {rows.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-slate-200 text-xs text-slate-500 dark:border-slate-800">
-              <tr>
-                <th className="py-2 pr-3 font-medium">Date</th>
-                <th className="py-2 pr-3 font-medium">Winner</th>
-                <th className="py-2 pr-3 font-medium">Faction</th>
-                <th className="py-2 pr-3 text-right font-medium">Players</th>
-                <th className="py-2 pr-3 text-right font-medium">Score</th>
-                <th className="py-2 text-right font-medium">Spread</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((g) => (
-                <tr key={g.id} className="border-b border-slate-100 hover:bg-slate-100 dark:border-slate-900 dark:hover:bg-slate-900">
-                  <td className="py-2 pr-3 whitespace-nowrap">
-                    <Link to={`/games/${g.id}`} className="text-indigo-600 hover:underline dark:text-indigo-400">
-                      {formatDate(g.playedOn)}
-                    </Link>
-                  </td>
-                  <td className="py-2 pr-3">{g.winner.player.name}</td>
-                  <td className="py-2 pr-3">{g.winner.faction.name}</td>
-                  <td className="py-2 pr-3 text-right tabular-nums">{g.playerCount}</td>
-                  <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap">
-                    {g.winner.points}/{g.vpTarget}
-                    {g.endedEarly && <span title="Ended early"> *</span>}
-                  </td>
-                  <td className="py-2 text-right tabular-nums">{g.pointSpread}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          {rows.some((g) => g.endedEarly) && <p className="mt-2 text-xs text-slate-500">* ended early</p>}
-        </div>
-      )}
+      {rows.length > 0 && <GamesTable games={rows} />}
       {games.hasNextPage && (
         <button
           type="button"
