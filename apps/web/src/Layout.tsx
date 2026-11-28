@@ -39,6 +39,12 @@ export function Layout() {
             <NavLink to="/games" className={navClass}>
               Games
             </NavLink>
+            <NavLink to="/factions" className={navClass}>
+              Factions
+            </NavLink>
+            <NavLink to="/players" className={navClass}>
+              Players
+            </NavLink>
             {me.data && (
               <NavLink to="/import" className={navClass}>
                 Import

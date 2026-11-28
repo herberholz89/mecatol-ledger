@@ -9,6 +9,11 @@ import {
   healthResponseSchema,
   meResponseSchema,
   playerSchema,
+  factionStatsDetailSchema,
+  factionStatsSchema,
+  playerStatsDetailSchema,
+  playerStatsSchema,
+  statsOverviewSchema,
   type CreateFactionAlias,
   type CreatePlayer,
   type GameInput,
@@ -105,19 +110,46 @@ export interface GamesFilter {
   mine?: boolean | undefined;
 }
 
-export function fetchGames(filter: GamesFilter, offset: number): Promise<GamesPage> {
+/** Query string from a filter object, leaving out unset and false values. Starts with `?` unless empty. */
+function queryString(filter: object, extra: Record<string, string> = {}): string {
   const qs = new URLSearchParams();
-  for (const [key, value] of Object.entries(filter)) {
+  for (const [key, value] of Object.entries(filter) as [string, unknown][]) {
     if (value !== undefined && value !== false && value !== '') qs.set(key, String(value));
   }
-  if (offset) qs.set('offset', String(offset));
-  return request(`/games${qs.size ? `?${qs}` : ''}`, gamesPageSchema);
+  for (const [key, value] of Object.entries(extra)) qs.set(key, value);
+  return qs.size ? `?${qs}` : '';
+}
+
+export function fetchGames(filter: GamesFilter, offset: number, limit?: number): Promise<GamesPage> {
+  const extra: Record<string, string> = {};
+  if (offset) extra.offset = String(offset);
+  if (limit) extra.limit = String(limit);
+  return request(`/games${queryString(filter, extra)}`, gamesPageSchema);
 }
 
 export const fetchGame = (id: number) => request(`/games/${id}`, gameDetailSchema);
 export const createGame = (body: GameInput) => request('/games', gameDetailSchema, json('POST', body));
 export const updateGame = (id: number, body: GameInput) => request(`/games/${id}`, gameDetailSchema, json('PUT', body));
 export const deleteGame = (id: number) => request(`/games/${id}`, z.null(), { method: 'DELETE' });
+
+// ---------------------------------------------------------------------------------------------
+// Stats
+// ---------------------------------------------------------------------------------------------
+
+export interface StatsFilter {
+  playerCount?: number | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  mine?: boolean | undefined;
+}
+
+export const fetchStatsOverview = (f: StatsFilter) => request(`/stats/overview${queryString(f)}`, statsOverviewSchema);
+export const fetchFactionStats = (f: StatsFilter) => request(`/stats/factions${queryString(f)}`, factionStatsSchema.array());
+export const fetchPlayerStats = (f: StatsFilter) => request(`/stats/players${queryString(f)}`, playerStatsSchema.array());
+export const fetchFactionStatsDetail = (id: number, f: StatsFilter) =>
+  request(`/stats/factions/${id}${queryString(f)}`, factionStatsDetailSchema);
+export const fetchPlayerStatsDetail = (id: number, f: StatsFilter) =>
+  request(`/stats/players/${id}${queryString(f)}`, playerStatsDetailSchema);
 
 // ---------------------------------------------------------------------------------------------
 // Imports and faction aliases

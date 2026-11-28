@@ -36,6 +36,13 @@
       "when": 1795828891051,
       "tag": "0004_import_batches",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1795844964806,
+      "tag": "0005_seat_results",
+      "breakpoints": true
     }
   ]
 }
