@@ -6,7 +6,7 @@ import { formatDate } from '../format.js';
 import { queryKeys } from '../queries.js';
 import { FormError } from './form.js';
 
-/** Date, winner, winning faction, player count, score and spread; each date links to the game. */
+/** Date, winner, winning faction, player count, score and spread; each date links to the game. Phones skip player count and spread. */
 export function GamesTable({ games }: { games: readonly GameSummary[] }) {
   return (
     <div className="overflow-x-auto">
@@ -16,9 +16,9 @@ export function GamesTable({ games }: { games: readonly GameSummary[] }) {
             <th className="py-2 pr-3 font-medium">Date</th>
             <th className="py-2 pr-3 font-medium">Winner</th>
             <th className="py-2 pr-3 font-medium">Faction</th>
-            <th className="py-2 pr-3 text-right font-medium">Players</th>
+            <th className="hidden py-2 pr-3 text-right font-medium sm:table-cell">Players</th>
             <th className="py-2 pr-3 text-right font-medium">Score</th>
-            <th className="py-2 text-right font-medium">Spread</th>
+            <th className="hidden py-2 text-right font-medium sm:table-cell">Spread</th>
           </tr>
         </thead>
         <tbody>
@@ -31,12 +31,12 @@ export function GamesTable({ games }: { games: readonly GameSummary[] }) {
               </td>
               <td className="py-2 pr-3">{g.winner.player.name}</td>
               <td className="py-2 pr-3">{g.winner.faction.name}</td>
-              <td className="py-2 pr-3 text-right tabular-nums">{g.playerCount}</td>
+              <td className="hidden py-2 pr-3 text-right tabular-nums sm:table-cell">{g.playerCount}</td>
               <td className="py-2 pr-3 text-right tabular-nums whitespace-nowrap">
                 {g.winner.points}/{g.vpTarget}
                 {g.endedEarly && <span title="Ended early"> *</span>}
               </td>
-              <td className="py-2 text-right tabular-nums">{g.pointSpread}</td>
+              <td className="hidden py-2 text-right tabular-nums sm:table-cell">{g.pointSpread}</td>
             </tr>
           ))}
         </tbody>

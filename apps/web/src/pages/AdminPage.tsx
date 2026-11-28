@@ -66,21 +66,15 @@ function FactionsAdmin() {
         <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} />
         Show archived
       </label>
-      <div className="overflow-x-auto">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 text-xs text-slate-500 dark:border-slate-800">
-            <tr>
-              <th className="py-2 font-medium">Name</th>
-              <th className="py-2 pl-3 font-medium">Expansion</th>
-              <th className="py-2 pl-3 text-right font-medium">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((f) => (
-              <FactionRow key={`${f.id}:${f.name}`} faction={f} />
-            ))}
-          </tbody>
-        </table>
+      <div className="text-sm">
+        <div className="hidden grid-cols-[1fr_12rem_6.5rem] gap-3 border-b border-slate-200 py-2 text-xs text-slate-500 sm:grid dark:border-slate-800">
+          <span>Name</span>
+          <span>Expansion</span>
+          <span className="text-right">Status</span>
+        </div>
+        {list.map((f) => (
+          <FactionRow key={`${f.id}:${f.name}`} faction={f} />
+        ))}
       </div>
     </section>
   );
@@ -112,7 +106,7 @@ function AddFactionForm() {
           maxLength={60}
           onChange={(e) => setName(e.target.value)}
         />
-        <select aria-label="Expansion" className={`${inputClass} w-auto`} value={expansion} onChange={(e) => setExpansion(e.target.value as Expansion)}>
+        <select aria-label="Expansion" className={`${inputClass} sm:w-56`} value={expansion} onChange={(e) => setExpansion(e.target.value as Expansion)}>
           {EXPANSIONS.map((x) => (
             <option key={x} value={x}>
               {EXPANSION_LABELS[x]}
@@ -137,53 +131,46 @@ function FactionRow({ faction }: { faction: Faction }) {
   });
   const renamed = name.trim() !== '' && name.trim() !== faction.name;
   return (
-    <>
-      <tr className={`border-b border-slate-100 dark:border-slate-900 ${faction.archived ? 'text-slate-500' : ''}`}>
-        <td className="py-1.5">
-          <form
-            className="flex gap-2"
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (renamed) save.mutate({ name });
-            }}
-          >
-            <input aria-label={`Name of ${faction.name}`} className={cellInput} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
-            {renamed && (
-              <button type="submit" className={smallButton} disabled={save.isPending}>
-                Save
-              </button>
-            )}
-          </form>
-        </td>
-        <td className="py-1.5 pl-3">
-          <select
-            aria-label={`Expansion of ${faction.name}`}
-            className={cellInput}
-            value={faction.expansion}
-            disabled={save.isPending}
-            onChange={(e) => save.mutate({ expansion: e.target.value as Expansion })}
-          >
-            {EXPANSIONS.map((x) => (
-              <option key={x} value={x}>
-                {EXPANSION_LABELS[x]}
-              </option>
-            ))}
-          </select>
-        </td>
-        <td className="py-1.5 pl-3 text-right">
-          <button type="button" className={smallButton} disabled={save.isPending} onClick={() => save.mutate({ archived: !faction.archived })}>
-            {faction.archived ? 'Unarchive' : 'Archive'}
-          </button>
-        </td>
-      </tr>
+    // Phones: name on its own line, expansion and archive below it.
+    <div className={`border-b border-slate-100 py-2 dark:border-slate-900 ${faction.archived ? 'text-slate-500' : ''}`}>
+      <div className="grid grid-cols-[1fr_6.5rem] gap-2 sm:grid-cols-[1fr_12rem_6.5rem] sm:gap-3">
+        <form
+          className="col-span-2 flex gap-2 sm:col-span-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (renamed) save.mutate({ name });
+          }}
+        >
+          <input aria-label={`Name of ${faction.name}`} className={cellInput} value={name} maxLength={60} onChange={(e) => setName(e.target.value)} />
+          {renamed && (
+            <button type="submit" className={smallButton} disabled={save.isPending}>
+              Save
+            </button>
+          )}
+        </form>
+        <select
+          aria-label={`Expansion of ${faction.name}`}
+          className={cellInput}
+          value={faction.expansion}
+          disabled={save.isPending}
+          onChange={(e) => save.mutate({ expansion: e.target.value as Expansion })}
+        >
+          {EXPANSIONS.map((x) => (
+            <option key={x} value={x}>
+              {EXPANSION_LABELS[x]}
+            </option>
+          ))}
+        </select>
+        <button type="button" className={`${smallButton} justify-self-end`} disabled={save.isPending} onClick={() => save.mutate({ archived: !faction.archived })}>
+          {faction.archived ? 'Unarchive' : 'Archive'}
+        </button>
+      </div>
       {save.error && (
-        <tr>
-          <td colSpan={3} className="pb-2">
-            <FormError message={save.error.message} />
-          </td>
-        </tr>
+        <div className="pt-2">
+          <FormError message={save.error.message} />
+        </div>
       )}
-    </>
+    </div>
   );
 }
 
@@ -230,7 +217,7 @@ function AliasesAdmin() {
             maxLength={100}
             onChange={(e) => setAlias(e.target.value)}
           />
-          <select aria-label="Faction for the alias" className={`${inputClass} w-auto`} value={factionId} onChange={(e) => setFactionId(e.target.value)}>
+          <select aria-label="Faction for the alias" className={`${inputClass} sm:w-56`} value={factionId} onChange={(e) => setFactionId(e.target.value)}>
             <option value="">Means…</option>
             {(factions.data ?? []).map((f) => (
               <option key={f.id} value={f.id}>
@@ -300,9 +287,9 @@ function UsersAdmin({ myId }: { myId: string }) {
             <thead className="border-b border-slate-200 text-xs text-slate-500 dark:border-slate-800">
               <tr>
                 <th className="py-2 font-medium">User</th>
-                <th className="py-2 pl-3 text-right font-medium">Games logged</th>
-                <th className="py-2 pl-3 text-right font-medium">Players</th>
-                <th className="py-2 pl-3 font-medium">Role</th>
+                <th className="hidden py-2 pl-3 text-right font-medium sm:table-cell">Games logged</th>
+                <th className="hidden py-2 pl-3 text-right font-medium sm:table-cell">Players</th>
+                <th className="w-28 py-2 pl-3 font-medium">Role</th>
               </tr>
             </thead>
             <tbody>
@@ -327,10 +314,14 @@ function UserRow({ user, isMe, pending, onChange }: { user: AdminUser; isMe: boo
         <span className="block text-xs text-slate-500">
           {user.email} · joined {new Date(user.createdAt).toLocaleDateString(undefined, { dateStyle: 'medium' })}
         </span>
+        <span className="block text-xs text-slate-500 sm:hidden">
+          {user.games} {user.games === 1 ? 'game' : 'games'} logged · {user.players} {user.players === 1 ? 'player' : 'players'}
+        </span>
+        {locked && <span className="block text-xs text-slate-500">{locked}</span>}
       </td>
-      <td className="py-2 pl-3 text-right tabular-nums">{user.games}</td>
-      <td className="py-2 pl-3 text-right tabular-nums">{user.players}</td>
-      <td className="py-2 pl-3">
+      <td className="hidden py-2 pl-3 text-right tabular-nums sm:table-cell">{user.games}</td>
+      <td className="hidden py-2 pl-3 text-right tabular-nums sm:table-cell">{user.players}</td>
+      <td className="py-2 pl-3 align-top">
         <select
           aria-label={`Role of ${user.email}`}
           className={cellInput}
@@ -346,7 +337,6 @@ function UserRow({ user, isMe, pending, onChange }: { user: AdminUser; isMe: boo
           <option value="user">User</option>
           <option value="admin">Admin</option>
         </select>
-        {locked && <span className="mt-0.5 block text-xs text-slate-500">{locked}</span>}
       </td>
     </tr>
   );

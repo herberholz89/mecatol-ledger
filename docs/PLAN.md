@@ -273,10 +273,10 @@ PATCH  /api/me                   (user)  body: { displayName }
 3. **Log games**: roster players, game form with validation, games list + detail, owner edit/delete.
 4. **Import**: shared parser + tests against the real sheet, import page, batch undo.
 5. **Stats** ✅: `seat_results` view, `/api/stats/*`, factions + players pages with win rate vs expected charts and trends, dashboard (top factions/players need 3+ games), player-count, date and "mine" filters. Recharts loads in its own chunk on the pages that draw a chart. Production CPU: 1–2 ms typical (see the CPU budget).
-6. **Admin & polish**, in three PRs:
+6. **Admin & polish** ✅, in three PRs:
    1. **Roster management**: rename, archive, merge, claim/unclaim, delete a player who isn't in any games (for typos and test names; players in games are archived or merged instead). Tools sit on the player page for the roster owner or an admin; the account page lists your roster (with game counts) and your claimed player.
    2. **`/admin`**: add, rename, move or archive factions (never delete); add and delete aliases; list users and promote or demote. You can't change your own role, and `ADMIN_EMAILS` users can't be demoted here (they'd be promoted again on their next request), so the API refuses with 409. A role change applies at once on the isolate that made it and within a minute (the per-isolate user cache) elsewhere. Deleting any game stays on the game page, where admins already see Edit and Delete.
-   3. **Mobile layout** pass.
+   3. **Mobile layout**: checked every page at 375px. On phones the header is two rows (name and account, then the links, which scroll sideways if they don't fit); tables drop secondary columns below Tailwind's `sm` breakpoint (games: player count and spread; stats: wins and expected) instead of scrolling inside their box; each game-form seat stacks (player, points and remove, then the faction full width); admin faction rows and the users list stack the same way. No page scrolls sideways.
 
 ## 8. Out of scope for v1 (v2 candidates)
 **Playgroups / shared group rosters (confirmed v2)**, objectives scored, round timing, map/seats, Elo ratings, head-to-head records, game participants (non-owners) editing.

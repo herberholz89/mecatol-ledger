@@ -240,9 +240,9 @@ export function StatTable({ rows, nameLabel, empty }: { rows: readonly StatRow[]
           <tr>
             {header('name', nameLabel, false)}
             {header('games', 'Games')}
-            <th className="py-2 pr-3 text-right font-medium">Wins</th>
+            <th className="hidden py-2 pr-3 text-right font-medium sm:table-cell">Wins</th>
             {header('winRate', 'Win rate')}
-            <th className="py-2 pr-3 text-right font-medium">Expected</th>
+            <th className="hidden py-2 pr-3 text-right font-medium sm:table-cell">Expected</th>
             {header('diff', '± exp.')}
             {header('avgPoints', 'Avg pts')}
           </tr>
@@ -259,9 +259,9 @@ export function StatTable({ rows, nameLabel, empty }: { rows: readonly StatRow[]
                   {r.note && <span className="ml-2 text-xs text-slate-500">{r.note}</span>}
                 </td>
                 <td className="py-2 pr-3 text-right tabular-nums">{r.games}</td>
-                <td className="py-2 pr-3 text-right tabular-nums">{r.wins}</td>
+                <td className="hidden py-2 pr-3 text-right tabular-nums sm:table-cell">{r.wins}</td>
                 <td className="py-2 pr-3 text-right font-medium tabular-nums">{formatRate(r.winRate)}</td>
-                <td className="py-2 pr-3 text-right text-slate-500 tabular-nums">{formatRate(r.expectedWinRate)}</td>
+                <td className="hidden py-2 pr-3 text-right text-slate-500 tabular-nums sm:table-cell">{formatRate(r.expectedWinRate)}</td>
                 <td
                   className={`py-2 pr-3 text-right tabular-nums ${
                     diff === null || Math.abs(diff) < 0.005 ? 'text-slate-500' : diff > 0 ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-700 dark:text-red-400'
