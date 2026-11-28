@@ -1,5 +1,20 @@
 import { sql } from 'drizzle-orm';
-import { boolean, check, integer, pgTable, serial, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import {
+  boolean,
+  check,
+  date,
+  index,
+  integer,
+  pgTable,
+  primaryKey,
+  serial,
+  smallint,
+  text,
+  timestamp,
+  unique,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core';
 
 export const factions = pgTable(
   'factions',
@@ -38,3 +53,82 @@ export const appUsers = pgTable(
 );
 
 export type AppUser = typeof appUsers.$inferSelect;
+
+/**
+ * A name that appears in games. Each user has their own roster (`created_by`); the same name can
+ * exist in different rosters. `user_id` is set when an account claims the player (milestone 6).
+ */
+export const players = pgTable(
+  'players',
+  {
+    id: serial('id').primaryKey(),
+    name: text('name').notNull(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => appUsers.id),
+    userId: uuid('user_id').references(() => appUsers.id),
+    archived: boolean('archived').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // "Eric" and "eric" can't both be in one roster.
+    uniqueIndex('players_roster_name_unique').on(t.createdBy, sql`lower(${t.name})`),
+    uniqueIndex('one_player_per_user').on(t.userId).where(sql`${t.userId} is not null`),
+    check('players_name_check', sql`${t.name} = btrim(${t.name}) and char_length(${t.name}) between 1 and 40`),
+  ],
+);
+
+export const games = pgTable(
+  'games',
+  {
+    id: serial('id').primaryKey(),
+    /** Nullable: much spreadsheet history has no date. */
+    playedOn: date('played_on'),
+    vpTarget: smallint('vp_target').notNull().default(10),
+    endedEarly: boolean('ended_early').notNull().default(false),
+    notes: text('notes'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => appUsers.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('games_vp_target_check', sql`${t.vpTarget} between 1 and 20`),
+    check('games_notes_check', sql`char_length(${t.notes}) <= 2000`),
+    index('games_played_on_idx').on(t.playedOn.desc().nullsLast(), t.id.desc()),
+    index('games_created_by_idx').on(t.createdBy),
+  ],
+);
+
+/**
+ * One row per seat. Seat-count (2–8) and winner-has-most-points rules are checked in the app,
+ * inside the write transaction; the database guarantees at most one winner per game.
+ */
+export const gamePlayers = pgTable(
+  'game_players',
+  {
+    gameId: integer('game_id')
+      .notNull()
+      .references(() => games.id, { onDelete: 'cascade' }),
+    playerId: integer('player_id')
+      .notNull()
+      .references(() => players.id),
+    factionId: integer('faction_id')
+      .notNull()
+      .references(() => factions.id),
+    points: smallint('points').notNull(),
+    isWinner: boolean('is_winner').notNull().default(false),
+  },
+  (t) => [
+    primaryKey({ columns: [t.gameId, t.playerId] }),
+    unique('game_players_game_faction_unique').on(t.gameId, t.factionId),
+    uniqueIndex('one_winner_per_game').on(t.gameId).where(sql`${t.isWinner}`),
+    check('game_players_points_check', sql`${t.points} >= 0`),
+    index('game_players_player_idx').on(t.playerId),
+    index('game_players_faction_idx').on(t.factionId),
+  ],
+);
+
+// The `game_summary` view (player count, winner, point spread) is created in SQL in
+// drizzle/0003_games.sql. Queries read it with plain SQL, so it isn't modeled here.
