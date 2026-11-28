@@ -173,30 +173,34 @@ Seeded aliases from typos found in the sheet: `necro virus` → Nekro Virus, `th
 - Each game is a block of consecutive rows separated by a blank row. One row per seat: `A` faction, `B` player, `C` score.
 - The first row of a block also carries `D` point spread, `E` winner name, `F` winning faction, `G` losing faction. `H` holds either a date like `5/21` (no year, on either row) or a note like "Total Annihilation".
 - Columns I onward (per-player faction checklists) are ignored. Placeholder blocks with a lone `0` in column D are skipped.
+- Dates in the .xlsx are real date cells (formatted `m/d`), so they keep their year (2026). Only text dates in a .csv need the default year.
+- Rows inside a block with text but no faction or score (e.g. "merge above and below for 1 game", a lone "cody") are kept as annotations and shown as warnings.
 
 ### Flow (a page at `/import`)
-1. **Upload**: the user downloads the sheet as .xlsx (or one tab as .csv) and drops it in. The file is parsed **in the browser** by the shared parser (SheetJS). Nothing is saved yet.
-2. **Pick tabs** to import (default: Games, old data, multiplayer).
+1. **Upload**: the user downloads the sheet as .xlsx (or one tab as .csv) and drops it in. The file is parsed **in the browser** by the shared parser. SheetJS (0.20.3, installed from the vendor's CDN tarball because npm's `xlsx` is stuck at a vulnerable 0.18.5) reads the file; it lives behind a separate `@mecatol/shared/xlsx` entry, loaded only on this page and never bundled into the Worker. Nothing is saved yet.
+2. **Pick tabs** to import (default: Games, old data, multiplayer). Tabs can be reordered: games are inserted in tab order, and undated games list newest-inserted first, so older tabs go on top.
 3. **Map names**:
-   - Every distinct player name (trimmed, so `"Marcus "` becomes `Marcus`) maps to an existing roster player or a new one.
+   - Every distinct player name (trimmed, so `"Marcus "` becomes `Marcus`) maps to an existing roster player or a new one. Giving two spellings the same new name (or roster player) merges them. New players are created by the import itself, in the same statement, and stay in the roster after an undo.
    - Unknown faction names are matched through aliases. Anything still unmatched must be picked from a dropdown, with an option to save it as a new alias (admins only).
 4. **Defaults**:
    - Year for dates without one. **Default 2026** (confirmed for the existing sheet); editable.
    - VP target is inferred as 14 when the top score is 14 or more, otherwise 10, and can be overridden per game.
    - Column H text goes into notes.
 5. **Review table**: one row per game with status ✅ OK / ⚠️ warning / ❌ blocked.
-   - ❌ **Blocked**: missing player or faction, fewer than 2 seats, a tie for top score.
+   - ❌ **Blocked**: missing player, faction or score, fewer than 2 seats, the same player or faction twice, a tie for top score (unless marked ended early with a winner picked).
    - ⚠️ **Warnings**:
      - the sheet's winner column disagrees with the highest score
      - the sheet's spread differs from the recomputed 1st − 2nd (e.g. the multiplayer Sol/Nekro/Saar game has spread 3 in the sheet, but 1st − 2nd is 1)
-     - no date
      - inline notes like "merge above and below for 1 game"
+   - "No date" is shown as an info note but doesn't change a game's status. *(Changed 2026-11-28: as a warning it flagged 65 of the sheet's 78 games and buried the real problems.)*
 
    Blocked games can be fixed inline or skipped.
-6. **Commit**: the normalized JSON is posted to `POST /api/imports`. The server re-validates everything and writes one `import_batch` plus its games atomically (one statement or one HTTP transaction, no WebSocket `Pool`).
+6. **Commit**: the normalized JSON is posted to `POST /api/imports` (at most 500 games). The server re-validates everything (same rules as a logged game; archived players and factions are allowed, since imports are history) and writes the `import_batch`, new players, games and seats in **one statement** with data-modifying CTEs. Game ids are drawn from the sequence up front so seats can reference them.
 7. **Undo**: `DELETE /api/imports/:id` removes the whole batch.
 
 Known clean-up in the sheet: the multiplayer tab has seats with no player name and a game whose winner cell is blank, so those games will show as blocked until fixed in the review step.
+
+**Result against the real sheet (2026-11-28):** 78 games (Games 40, multiplayer 3, old data 35). 75 OK, 1 to check (the multiplayer spread), 2 blocked: the hand-merged 4-player game (two seats without names; "elise" and "cody" are written beside it) and an old-data game with no score for one seat. All 39 faction spellings match through the seeded aliases plus loose matching (which now also ignores spaces around "/", for "Firmament/ Obsidian"). The Games tab's last game has the note "add data to table starting here", which the importer should clear in review. The tests run against `packages/shared/test-fixtures/ti-sample.xlsx`, a copy of the real sheet with player names replaced (Marcus → `user`, Eric → `user2`, codey → `user3`, cody → `user 3`, elise → `user4`, also inside formulas) and document properties cleared. `TI_SHEET=<path> pnpm test` runs the same checks against a fresh download.
 
 ---
 
@@ -234,12 +238,13 @@ DELETE /api/players/:id          (owner/admin)  only if the player has no seats;
 
 GET    /api/factions             POST/PATCH /api/factions (admin)
 GET    /api/factions/:id         POST/DELETE /api/factions/aliases (admin)
+GET    /api/factions/aliases     (public; used by the importer)
 
 GET    /api/stats/factions?playerCount=&from=&to=&mine=
 GET    /api/stats/players?playerCount=&from=&to=&mine=
 
 POST   /api/imports              (user)  body: normalized batch
-GET    /api/imports?mine=true
+GET    /api/imports              (user)  your own imports, with game counts
 DELETE /api/imports/:id          (owner/admin)
 
 GET    /api/me                   (user)  current app_users row; creates it on first call
@@ -300,7 +305,7 @@ PATCH  /api/me                   (user)  body: { displayName }
   | `GET /api/players` | 1–2 ms (10) | 1–3 ms (5) |
   | `GET /api/games`, `/api/factions`, `/api/health` | 1–10 ms (12) | 1–4 ms (3) |
 
-  One sample per game write, probably on a fresh isolate, so typical requests should be lower. `POST /api/games` at 7 ms is the tightest route; measure milestone 4's bulk import the same way.
+  One sample per game write, probably on a fresh isolate, so typical requests should be lower. `POST /api/games` at 7 ms is the tightest route; measure milestone 4's bulk import the same way. **To do after the milestone 4 deploy:** `wrangler tail` a real import of the sheet (78 games, ~160 seats in one request: Zod validation plus building 13 parameter arrays) and record it here. If it goes over 10 ms, split the commit into chunks of games in the browser, each its own batch or a shared batch id.
 
 ### Pipeline
 1. Push or PR → **GitHub Actions**: `pnpm install`, typecheck, lint, Vitest (with a Postgres service), build.
@@ -405,3 +410,4 @@ Keep "Twilight Imperium" out of the name and domain (Fantasy Flight Games' trade
 - 2026-11-26: **No custom domain**; site on `workers.dev`. Sign-in emails go through a dedicated Gmail account over SMTP because Resend requires a verified domain.
 - 2026-11-27: Auth moves to **Neon Auth** (managed Better Auth), still email-code only. Neon sends the codes (Gmail as its custom SMTP in production). New `app_users` table; user columns become `uuid references app_users(id)`. See [Auth design](#auth-design-neon-auth).
 - 2026-11-28: Database writes use Neon's **HTTP driver only** (single statements or HTTP transactions). The WebSocket `Pool` took game writes over the 10 ms CPU limit.
+- 2026-11-28: Milestone 4 (import): SheetJS from its CDN tarball, behind a separate `@mecatol/shared/xlsx` entry. "No date" is info, not a warning. Imports may use archived players and factions. Players an import creates stay after an undo (deleting unused players is milestone 6). `POST /api/factions/aliases` added now for the importer; alias deletion stays in milestone 6.

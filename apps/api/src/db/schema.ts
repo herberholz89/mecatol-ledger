@@ -78,6 +78,23 @@ export const players = pgTable(
   ],
 );
 
+/** One spreadsheet import. Deleting a batch deletes its games (undo). */
+export const importBatches = pgTable(
+  'import_batches',
+  {
+    id: serial('id').primaryKey(),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => appUsers.id),
+    sourceName: text('source_name').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('import_batches_source_name_check', sql`char_length(${t.sourceName}) between 1 and 200`),
+    index('import_batches_created_by_idx').on(t.createdBy),
+  ],
+);
+
 export const games = pgTable(
   'games',
   {
@@ -90,6 +107,8 @@ export const games = pgTable(
     createdBy: uuid('created_by')
       .notNull()
       .references(() => appUsers.id),
+    /** Set for imported games; undoing the import deletes them. */
+    importBatchId: integer('import_batch_id').references(() => importBatches.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -98,6 +117,7 @@ export const games = pgTable(
     check('games_notes_check', sql`char_length(${t.notes}) <= 2000`),
     index('games_played_on_idx').on(t.playedOn.desc().nullsLast(), t.id.desc()),
     index('games_created_by_idx').on(t.createdBy),
+    index('games_import_batch_idx').on(t.importBatchId),
   ],
 );
 

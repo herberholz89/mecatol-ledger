@@ -5,6 +5,7 @@ import { auth } from './routes/auth.js';
 import { factionsRoute } from './routes/factions.js';
 import { gamesRoute } from './routes/games.js';
 import { health } from './routes/health.js';
+import { importsRoute } from './routes/imports.js';
 import { me } from './routes/me.js';
 import { playersRoute } from './routes/players.js';
 
@@ -16,6 +17,7 @@ app.route('/me', me);
 app.route('/factions', factionsRoute);
 app.route('/players', playersRoute);
 app.route('/games', gamesRoute);
+app.route('/imports', importsRoute);
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404));
 app.onError((err, c) => {

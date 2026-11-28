@@ -1,8 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { fetchFactions, fetchPlayers } from './api.js';
+import { fetchFactionAliases, fetchFactions, fetchPlayers } from './api.js';
 
 export const queryKeys = {
   factions: ['factions'] as const,
+  factionAliases: ['factions', 'aliases'] as const,
+  imports: ['imports'] as const,
   players: (filter: { mine?: boolean; createdBy?: string } = {}) => ['players', filter] as const,
   allPlayers: ['players'] as const,
   games: ['games'] as const,
@@ -18,4 +20,8 @@ export function useFactions() {
 export function usePlayers(createdBy?: string) {
   const filter = createdBy ? { createdBy } : {};
   return useQuery({ queryKey: queryKeys.players(filter), queryFn: () => fetchPlayers(filter) });
+}
+
+export function useFactionAliases() {
+  return useQuery({ queryKey: queryKeys.factionAliases, queryFn: fetchFactionAliases, staleTime: Infinity });
 }

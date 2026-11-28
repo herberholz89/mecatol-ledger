@@ -3,6 +3,7 @@ import { Navigate, useNavigate } from 'react-router';
 import { signOut } from '../auth.js';
 import { DisplayNameForm } from '../components/DisplayNameForm.js';
 import { FormError } from '../components/form.js';
+import { MyImports } from '../components/MyImports.js';
 import { ME_QUERY_KEY, useMe } from '../useMe.js';
 
 export function AccountPage() {
@@ -24,7 +25,7 @@ export function AccountPage() {
 
   const user = me.data;
   return (
-    <section className="max-w-md space-y-8">
+    <section className="max-w-lg space-y-8">
       <h1 className="text-2xl font-semibold">Account</h1>
       {!user.displayName && (
         <p className="rounded-md bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950 dark:text-amber-200">
@@ -38,6 +39,7 @@ export function AccountPage() {
         <dd>{user.role === 'admin' ? 'Admin' : 'User'}</dd>
       </dl>
       <DisplayNameForm key={user.displayName ?? ''} initial={user.displayName} />
+      <MyImports />
       <div className="border-t border-slate-200 pt-6 dark:border-slate-800">
         <FormError message={out.error?.message ?? null} />
         <button

@@ -1,14 +1,19 @@
 import {
+  createdImportSchema,
+  factionAliasSchema,
   factionSchema,
+  importBatchSummarySchema,
   gameDetailSchema,
   gamesPageSchema,
   healthResponseSchema,
   meResponseSchema,
   playerSchema,
+  type CreateFactionAlias,
   type CreatePlayer,
   type GameInput,
   type GamesPage,
   type HealthResponse,
+  type ImportBatchInput,
   type MeResponse,
   type Player,
   type UpdateMe,
@@ -109,3 +114,14 @@ export const fetchGame = (id: number) => request(`/games/${id}`, gameDetailSchem
 export const createGame = (body: GameInput) => request('/games', gameDetailSchema, json('POST', body));
 export const updateGame = (id: number, body: GameInput) => request(`/games/${id}`, gameDetailSchema, json('PUT', body));
 export const deleteGame = (id: number) => request(`/games/${id}`, z.null(), { method: 'DELETE' });
+
+// ---------------------------------------------------------------------------------------------
+// Imports and faction aliases
+// ---------------------------------------------------------------------------------------------
+
+export const fetchFactionAliases = () => request('/factions/aliases', factionAliasSchema.array());
+export const createFactionAlias = (body: CreateFactionAlias) => request('/factions/aliases', factionAliasSchema, json('POST', body));
+
+export const fetchImports = () => request('/imports', importBatchSummarySchema.array());
+export const createImport = (body: ImportBatchInput) => request('/imports', createdImportSchema, json('POST', body));
+export const deleteImport = (id: number) => request(`/imports/${id}`, z.null(), { method: 'DELETE' });
