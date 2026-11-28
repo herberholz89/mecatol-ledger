@@ -20,3 +20,19 @@
     --chart-ink: #94a3b8;
   }
 }
+
+/* iOS Safari gives date inputs an intrinsic minimum width (so `w-full` can't shrink them and they
+   spill out of their grid cell or flex box) and a different height when empty. Drop the native
+   look (the picker still opens) and keep the value line one text line tall. */
+@layer base {
+  input[type='date'] {
+    min-width: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  input[type='date']::-webkit-date-and-time-value {
+    min-height: 1.5em;
+    margin: 0;
+    text-align: left;
+  }
+}
