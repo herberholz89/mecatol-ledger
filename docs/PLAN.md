@@ -36,6 +36,7 @@ A website where friends log their own TI games and get better stats than the cur
 | Edit / delete a game | | Own games only (`created_by`) | Any |
 | Create players | | ✅ (in their roster) | ✅ |
 | Rename / merge players | | Own roster | Any |
+| Delete a player who isn't in any games | | Own roster | Any |
 | Import spreadsheet | | ✅ (games owned by importer) | ✅ |
 | Undo an import batch | | Own batches | Any |
 | Add / edit / archive factions, faction aliases | | | ✅ |
@@ -229,6 +230,7 @@ GET    /api/players?mine=        POST /api/players (user)
 GET    /api/players/:id          PATCH /api/players/:id (owner/admin)
 POST   /api/players/:id/claim    (user)
 POST   /api/players/:id/merge    (owner/admin)  body: { intoPlayerId }
+DELETE /api/players/:id          (owner/admin)  only if the player has no seats; otherwise 409
 
 GET    /api/factions             POST/PATCH /api/factions (admin)
 GET    /api/factions/:id         POST/DELETE /api/factions/aliases (admin)
@@ -255,7 +257,7 @@ PATCH  /api/me                   (user)  body: { displayName }
 3. **Log games**: roster players, game form with validation, games list + detail, owner edit/delete.
 4. **Import**: shared parser + tests against the real sheet, import page, batch undo.
 5. **Stats**: views, factions + players pages, dashboard, player-count filter.
-6. **Admin & polish**: faction/alias management, player merge/claim, mobile layout.
+6. **Admin & polish**: faction/alias management, player merge/claim, delete a player who isn't in any games (for typos and test names; players in games are archived or merged instead), mobile layout.
 
 ## 8. Out of scope for v1 (v2 candidates)
 **Playgroups / shared group rosters (confirmed v2)**, objectives scored, round timing, map/seats, Elo ratings, head-to-head records, game participants (non-owners) editing.
